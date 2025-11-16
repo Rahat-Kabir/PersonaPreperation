@@ -1,16 +1,1 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(uv run:*)",
-      "Bash(timeout 5 uv run python:*)",
-      "Bash(timeout 15 uv run:*)",
-      "Bash(powershell -Command \"Get-ChildItem -Force | Format-Table -AutoSize\")",
-      "Bash(powershell:*)",
-      "Bash(dir /s /b d:13nsuPROJECTPersonaPreperation)",
-      "Bash(dir:*)",
-      "Bash(uv add:*)"
-    ],
-    "deny": [],
-    "ask": []
-  }
-}
+
