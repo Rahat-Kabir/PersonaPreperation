@@ -1,0 +1,22 @@
+[project]
+name = "persona-preparation"
+version = "0.1.0"
+description = "AI-powered meeting preparation assistant built with Anthropic SDK"
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=0.73.0",
+    "python-dotenv>=1.0.0",
+    "tavily-python>=0.5.0",
+    "firecrawl-py>=1.5.0",
+    "requests>=2.32.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.0.0",
+    "playwright>=1.56.0",
+]
+
+[tool.uv]
+dev-dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
