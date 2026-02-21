@@ -18,13 +18,16 @@ from dotenv import load_dotenv
 from anthropic import Anthropic
 import json
 
-from models import ResearchRequest, ResearchResponse, HealthResponse, AgentEvent
-from persona_agent_tools import (
-    research_person_with_tools,
-    research_person_with_tools_stream,
-    ToolExecutor,
-    validate_person_name
+from models import (
+    ResearchRequest,
+    ResearchResponse,
+    HealthResponse,
+    AgentEvent,
+    DisambiguationResponse,
 )
+from agent import research_person_with_tools, research_person_with_tools_stream, disambiguate_person_name
+from tools import ToolExecutor
+from utils import validate_person_name
 
 # Load environment variables
 load_dotenv()
@@ -130,7 +133,8 @@ async def root():
         "endpoints": {
             "health": "/api/health",
             "research": "/api/research (POST)",
-            "research_stream": "/api/research/stream (POST)"
+            "research_stream": "/api/research/stream (POST)",
+            "disambiguate": "/api/research/disambiguate (POST)",
         }
     }
 
@@ -173,13 +177,40 @@ async def research_person(
         raise HTTPException(status_code=500, detail="API not properly initialized")
 
     try:
+        selected_identity_dict = request.selected_identity.model_dump() if request.selected_identity else None
+        disambiguation = None
+        if not selected_identity_dict:
+            disambiguation = await disambiguate_person_name(
+                tool_executor=tool_executor,
+                person_name=request.person_name,
+                meeting_context=request.meeting_context or "",
+            )
+            status = disambiguation["status"]
+            if status in ("ambiguous", "no_match") and not request.continue_anyway:
+                return ResearchResponse(
+                    success=False,
+                    brief=None,
+                    person_name=request.person_name,
+                    timestamp=datetime.now().isoformat(),
+                    error_message=(
+                        "Identity is ambiguous or not confidently found. "
+                        "Call /api/research/disambiguate and select a candidate, "
+                        "or set continue_anyway=true."
+                    ),
+                    disambiguation_status=status,
+                )
+            if status == "direct" and disambiguation.get("candidates"):
+                selected_identity_dict = disambiguation["candidates"][0]
+
         # Perform research
         logger.info("Starting research workflow.")
         brief = await research_person_with_tools(
             client=anthropic_client,
             tool_executor=tool_executor,
             person_name=request.person_name,
-            meeting_context=request.meeting_context or ""
+            meeting_context=request.meeting_context or "",
+            selected_identity=selected_identity_dict,
+            continue_anyway=request.continue_anyway,
         )
 
         if brief:
@@ -189,7 +220,9 @@ async def research_person(
                 brief=brief,
                 person_name=request.person_name,
                 timestamp=datetime.now().isoformat(),
-                iteration_count=None  # Could track this if needed
+                iteration_count=None,  # Could track this if needed
+                disambiguation_status=(disambiguation["status"] if disambiguation else None),
+                selected_identity_name=(selected_identity_dict.get("name") if selected_identity_dict else None),
             )
         else:
             logger.warning("Research failed to generate a brief.")
@@ -198,7 +231,8 @@ async def research_person(
                 brief=None,
                 person_name=request.person_name,
                 timestamp=datetime.now().isoformat(),
-                error_message="Research failed to generate a brief"
+                error_message="Research failed to generate a brief",
+                disambiguation_status=(disambiguation["status"] if disambiguation else None),
             )
 
     except Exception as e:
@@ -237,6 +271,27 @@ async def research_person_stream(
         logger.error("API clients not initialized")
         raise HTTPException(status_code=500, detail="API not properly initialized")
 
+    selected_identity_dict = request.selected_identity.model_dump() if request.selected_identity else None
+    disambiguation = None
+    if not selected_identity_dict:
+        disambiguation = await disambiguate_person_name(
+            tool_executor=tool_executor,
+            person_name=request.person_name,
+            meeting_context=request.meeting_context or "",
+        )
+        status = disambiguation["status"]
+        if status in ("ambiguous", "no_match") and not request.continue_anyway:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Identity is ambiguous or not confidently found. "
+                    "Call /api/research/disambiguate and select a candidate, "
+                    "or set continue_anyway=true."
+                ),
+            )
+        if status == "direct" and disambiguation.get("candidates"):
+            selected_identity_dict = disambiguation["candidates"][0]
+
     async def event_generator():
         """Generate Server-Sent Events from agent updates."""
         try:
@@ -247,7 +302,9 @@ async def research_person_stream(
                 client=anthropic_client,
                 tool_executor=tool_executor,
                 person_name=request.person_name,
-                meeting_context=request.meeting_context or ""
+                meeting_context=request.meeting_context or "",
+                selected_identity=selected_identity_dict,
+                continue_anyway=request.continue_anyway,
             ):
                 # Validate event with Pydantic model
                 event = AgentEvent(**event_dict)
@@ -279,6 +336,32 @@ async def research_person_stream(
             "X-Accel-Buffering": "no"  # Disable buffering for nginx
         }
     )
+
+
+@app.post("/api/research/disambiguate", response_model=DisambiguationResponse)
+async def research_person_disambiguate(
+    request: ResearchRequest,
+    _: None = Depends(verify_api_key),
+    __: None = Depends(enforce_rate_limit)
+):
+    """Run a quick low-cost disambiguation search before deep research."""
+    logger.info("Disambiguation request received.")
+
+    is_valid, error_msg = validate_person_name(request.person_name)
+    if not is_valid:
+        logger.warning(f"Invalid person name: {error_msg}")
+        raise HTTPException(status_code=400, detail=error_msg)
+
+    if not tool_executor:
+        logger.error("Tool executor not initialized")
+        raise HTTPException(status_code=500, detail="API not properly initialized")
+
+    result = await disambiguate_person_name(
+        tool_executor=tool_executor,
+        person_name=request.person_name,
+        meeting_context=request.meeting_context or "",
+    )
+    return DisambiguationResponse(**result)
 
 
 if __name__ == "__main__":

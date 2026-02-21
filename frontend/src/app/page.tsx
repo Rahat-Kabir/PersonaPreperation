@@ -1,13 +1,20 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowRight, Search, Globe, FileText, Loader2 } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { generateBriefStream, type AgentEvent } from "@/lib/api";
+import {
+  disambiguatePerson,
+  generateBriefStream,
+  type AgentEvent,
+  type IdentityCandidate,
+  type SelectedIdentity,
+} from "@/lib/api";
 
 const navItems = [
   { label: "Home", href: "#" },
@@ -15,13 +22,6 @@ const navItems = [
   { label: "Blog", href: "#blog" },
   { label: "Contact", href: "#contact" },
 ];
-
-const getToolIcon = (toolName: string) => {
-  if (toolName === "tavily_search") return <Search className="h-4 w-4" />;
-  if (toolName === "brave_search") return <Search className="h-4 w-4" />;
-  if (toolName === "firecrawl_scrape") return <Globe className="h-4 w-4" />;
-  return <FileText className="h-4 w-4" />;
-};
 
 const getToolLabel = (toolName: string) => {
   if (toolName === "tavily_search") return "Searching with Tavily";
@@ -39,68 +39,106 @@ export default function LandingPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [currentStatus, setCurrentStatus] = useState("");
   const [activityLog, setActivityLog] = useState<string[]>([]);
+  const [candidates, setCandidates] = useState<IdentityCandidate[]>([]);
+  const [candidateNote, setCandidateNote] = useState("");
 
   const formDisabled = useMemo(
     () => !personName || !context || isLoading,
     [personName, context, isLoading]
   );
 
+  const startStreamingResearch = async (
+    selectedIdentity?: SelectedIdentity,
+    continueAnyway = false
+  ) => {
+    setIsLoading(true);
+    setActivityLog([]);
+    setCurrentStatus("Starting research...");
+
+    await generateBriefStream(
+      personName,
+      context,
+      (event: AgentEvent) => {
+        if (event.event_type === "start") {
+          setCurrentStatus(`Researching ${event.data.person_name}...`);
+          setActivityLog((prev) => [
+            ...prev,
+            `Started research for ${event.data.person_name}`,
+          ]);
+        } else if (event.event_type === "thinking") {
+          setCurrentStatus(event.data.message || "Processing...");
+        } else if (event.event_type === "tool_call") {
+          const toolLabel = getToolLabel(event.data.tool_name);
+          setCurrentStatus(`${toolLabel}...`);
+
+          let searchQuery = "";
+          if (event.data.tool_input?.query) {
+            searchQuery = `: "${event.data.tool_input.query}"`;
+          } else if (event.data.tool_input?.url) {
+            searchQuery = `: ${event.data.tool_input.url}`;
+          }
+
+          setActivityLog((prev) => [...prev, `${toolLabel}${searchQuery}`]);
+        } else if (event.event_type === "tool_result") {
+          const summary = event.data.result_summary;
+          if (summary?.success) {
+            setActivityLog((prev) => [...prev, `+ ${summary.message}`]);
+          } else if (summary?.error) {
+            setActivityLog((prev) => [...prev, `x ${summary.error}`]);
+          }
+        }
+      },
+      (brief: string) => {
+        setCurrentStatus("Research complete!");
+        setOutput(brief);
+        setCandidates([]);
+        setCandidateNote("");
+        setIsLoading(false);
+      },
+      (error: string) => {
+        setCurrentStatus("Error occurred");
+        setOutput(`Error: ${error}`);
+        setIsLoading(false);
+      },
+      { selectedIdentity, continueAnyway }
+    );
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsLoading(true);
     setOutput("");
     setActivityLog([]);
-    setCurrentStatus("Starting research...");
+    setCandidates([]);
+    setCandidateNote("");
+    setCurrentStatus("Checking identity...");
 
     try {
-      await generateBriefStream(
-        personName,
-        context,
-        (event: AgentEvent) => {
-          // Handle each event
-          if (event.event_type === "start") {
-            setCurrentStatus(`Researching ${event.data.person_name}...`);
-            setActivityLog((prev) => [
-              ...prev,
-              `Started research for ${event.data.person_name}`,
-            ]);
-          } else if (event.event_type === "thinking") {
-            setCurrentStatus(event.data.message || "Processing...");
-          } else if (event.event_type === "tool_call") {
-            const toolLabel = getToolLabel(event.data.tool_name);
-            setCurrentStatus(`${toolLabel}...`);
+      const disambiguation = await disambiguatePerson(personName, context);
 
-            // Format tool input for display
-            let searchQuery = "";
-            if (event.data.tool_input?.query) {
-              searchQuery = `: "${event.data.tool_input.query}"`;
-            } else if (event.data.tool_input?.url) {
-              searchQuery = `: ${event.data.tool_input.url}`;
-            }
+      if (disambiguation.status === "ambiguous" && disambiguation.candidates.length > 0) {
+        setCandidates(disambiguation.candidates);
+        setCandidateNote(disambiguation.recommendation);
+        setCurrentStatus("Multiple people found. Select the correct one.");
+        setOutput("Select the correct person, or continue anyway.");
+        setIsLoading(false);
+        return;
+      }
 
-            setActivityLog((prev) => [...prev, `${toolLabel}${searchQuery}`]);
-          } else if (event.event_type === "tool_result") {
-            const summary = event.data.result_summary;
-            if (summary?.success) {
-              setActivityLog((prev) => [...prev, `✓ ${summary.message}`]);
-            } else if (summary?.error) {
-              setActivityLog((prev) => [...prev, `✗ ${summary.error}`]);
-            }
-          }
-        },
-        (brief: string) => {
-          // Handle completion
-          setCurrentStatus("Research complete!");
-          setOutput(brief);
-          setIsLoading(false);
-        },
-        (error: string) => {
-          // Handle error
-          setCurrentStatus("Error occurred");
-          setOutput(`Error: ${error}`);
-          setIsLoading(false);
-        }
-      );
+      if (disambiguation.status === "no_match") {
+        setCandidates([]);
+        setCandidateNote(disambiguation.recommendation);
+        setCurrentStatus("No confident match found.");
+        setOutput("No confident match found. Refine details or continue anyway.");
+        setIsLoading(false);
+        return;
+      }
+
+      const selectedFromDirect =
+        disambiguation.status === "direct" && disambiguation.candidates.length > 0
+          ? disambiguation.candidates[0]
+          : undefined;
+      await startStreamingResearch(selectedFromDirect, false);
     } catch (error) {
       const message =
         error instanceof Error
@@ -111,6 +149,43 @@ export default function LandingPage() {
       setIsLoading(false);
     }
   };
+
+  const handleCandidateSelect = async (candidate: IdentityCandidate) => {
+    setOutput("");
+    setCandidateNote(`Selected: ${candidate.name}`);
+    setCandidates([]);
+
+    try {
+      await startStreamingResearch(candidate, false);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Something went wrong while researching.";
+      setOutput(`Error: ${message}`);
+      setCurrentStatus("");
+      setIsLoading(false);
+    }
+  };
+
+  const handleContinueAnyway = async () => {
+    setOutput("");
+    setCandidates([]);
+
+    try {
+      await startStreamingResearch(undefined, true);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Something went wrong while researching.";
+      setOutput(`Error: ${message}`);
+      setCurrentStatus("");
+      setIsLoading(false);
+    }
+  };
+
+  const hasDisambiguationChoices = candidates.length > 0 || !!candidateNote;
 
   return (
     <main className="relative isolate w-full overflow-hidden rounded-[32px] border border-[#d8d4c7] bg-gradient-to-b from-[#fdfcf8] to-[#f2efe8] shadow-soft">
@@ -143,7 +218,7 @@ export default function LandingPage() {
             Never walk into a meeting unprepared again
           </h1>
           <p className="text-lg text-[#3b382f] sm:text-xl">
-            PersonaPreparation researches any person in sixty seconds—
+            PersonaPreparation researches any person in sixty seconds-
             distilling roles, priorities, and personalized conversation starters
             so you can own the room, not the prep.
           </p>
@@ -165,7 +240,7 @@ export default function LandingPage() {
             </div>
             <div className="space-y-3">
               <Label htmlFor="meeting-context">
-                Person background & why you're meeting
+                Person background &amp; why you&apos;re meeting
               </Label>
               <Textarea
                 id="meeting-context"
@@ -185,6 +260,58 @@ export default function LandingPage() {
             </p>
           </form>
 
+          {hasDisambiguationChoices ? (
+            <section className="rounded-[28px] border border-[#dcd8cd] bg-white/90 p-5 shadow-panel">
+              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#7a7666]">
+                Identity Check
+              </p>
+              {candidateNote ? (
+                <p className="mt-2 text-sm text-[#3b382f]">{candidateNote}</p>
+              ) : null}
+
+              {candidates.length > 0 ? (
+                <div className="mt-4 space-y-3">
+                  {candidates.map((candidate) => (
+                    <div
+                      key={candidate.id}
+                      className="rounded-xl border border-[#e5e0d4] bg-[#fbfaf5] p-4"
+                    >
+                      <p className="font-semibold text-[#1f1d18]">{candidate.name}</p>
+                      <p className="text-sm text-[#4d4a43]">
+                        {[candidate.title, candidate.organization]
+                          .filter(Boolean)
+                          .join(" at ") || "Role unknown"}
+                      </p>
+                      {candidate.summary ? (
+                        <p className="mt-1 text-sm text-[#5b584f]">{candidate.summary}</p>
+                      ) : null}
+                      {candidate.profile_url ? (
+                        <p className="mt-1 break-all text-xs text-[#6a675c]">
+                          {candidate.profile_url}
+                        </p>
+                      ) : null}
+                      <div className="mt-3">
+                        <Button
+                          type="button"
+                          onClick={() => handleCandidateSelect(candidate)}
+                          className="h-8 px-3 text-xs"
+                        >
+                          Select this person
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <div className="mt-4">
+                <Button type="button" variant="outline" onClick={handleContinueAnyway}>
+                  Continue anyway
+                </Button>
+              </div>
+            </section>
+          ) : null}
+
           <section className="rounded-[40px] border border-[#dcd8cd] bg-white/85 p-6 shadow-panel">
             <p className="text-sm font-medium uppercase tracking-[0.4em] text-[#7a7666]">
               Instant output
@@ -192,7 +319,7 @@ export default function LandingPage() {
 
             {isLoading && (
               <div className="mt-4 rounded-[28px] border border-[#e5e0d4] bg-gradient-to-br from-white to-[#f7f5ee] p-6 shadow-inner">
-                <div className="flex items-center gap-3 mb-4">
+                <div className="mb-4 flex items-center gap-3">
                   <Loader2 className="h-5 w-5 animate-spin text-[#7a7666]" />
                   <p className="text-base font-medium text-[#1f1d18]">
                     {currentStatus}
@@ -200,13 +327,13 @@ export default function LandingPage() {
                 </div>
 
                 {activityLog.length > 0 && (
-                  <div className="space-y-2 mt-4 max-h-[200px] overflow-y-auto">
+                  <div className="mt-4 max-h-[200px] space-y-2 overflow-y-auto">
                     {activityLog.map((activity, index) => (
                       <div
                         key={index}
-                        className="text-sm text-[#4d4a43] flex items-start gap-2 animate-in fade-in slide-in-from-left-2 duration-300"
+                        className="animate-in slide-in-from-left-2 fade-in flex items-start gap-2 text-sm text-[#4d4a43] duration-300"
                       >
-                        <span className="text-[#7a7666] mt-0.5">•</span>
+                        <span className="mt-0.5 text-[#7a7666]">*</span>
                         <span>{activity}</span>
                       </div>
                     ))}
@@ -216,15 +343,8 @@ export default function LandingPage() {
             )}
 
             {!isLoading && (
-              <div className="mt-4 h-[280px] rounded-[28px] border border-[#e5e0d4] bg-gradient-to-br from-white to-[#f7f5ee] p-6 text-base leading-relaxed text-[#1f1d18] shadow-inner overflow-y-auto">
-                {output.split("\n").map((line, index) => (
-                  <p
-                    key={index}
-                    className={index === 0 ? "font-semibold" : "mt-2"}
-                  >
-                    {line}
-                  </p>
-                ))}
+              <div className="prose prose-sm prose-stone mt-4 h-[280px] max-w-none overflow-y-auto rounded-[28px] border border-[#e5e0d4] bg-gradient-to-br from-white to-[#f7f5ee] p-6 text-base leading-relaxed text-[#1f1d18] shadow-inner">
+                <ReactMarkdown>{output}</ReactMarkdown>
               </div>
             )}
 
@@ -248,7 +368,7 @@ export default function LandingPage() {
           </p>
           <p className="max-w-3xl text-base text-[#3a382f]">
             Get to know anyone in minutes, not hours. Sales, recruiting, and
-            founder teams use PersonaPreparation to research people fast ,no
+            founder teams use PersonaPreparation to research people fast, no
             more juggling dozens of browser tabs. Connect our API and every
             brief is automatically saved and ready to add to your CRM.
           </p>

@@ -1,0 +1,44 @@
+{
+  "generated_at": "2026-02-22T03:30:31.348760",
+  "case_count": 2,
+  "success_count": 2,
+  "failure_count": 0,
+  "success_rate": 1.0,
+  "average_total_score": 20.0,
+  "average_latency_seconds": 132.01,
+  "total_elapsed_seconds": 264.02,
+  "cases": [
+    {
+      "index": 1,
+      "person_name": "Satya Nadella",
+      "meeting_context": "Enterprise software partnership discussion",
+      "success": true,
+      "elapsed_seconds": 152.01,
+      "scores": {
+        "section_hits": 3,
+        "url_count": 18,
+        "fact_like_count": 4,
+        "actionable_score": 5,
+        "grounding_score": 12,
+        "uncertainty_score": 2,
+        "total_score": 22
+      }
+    },
+    {
+      "index": 2,
+      "person_name": "Jensen Huang",
+      "meeting_context": "AI infrastructure procurement conversation",
+      "success": true,
+      "elapsed_seconds": 112.01,
+      "scores": {
+        "section_hits": 2,
+        "url_count": 10,
+        "fact_like_count": 9,
+        "actionable_score": 0,
+        "grounding_score": 14,
+        "uncertainty_score": 2,
+        "total_score": 18
+      }
+    }
+  ]
+}

@@ -1,0 +1,172 @@
+{
+  "generated_at": "2026-02-22T03:36:38.848675",
+  "case_count": 10,
+  "success_count": 2,
+  "failure_count": 8,
+  "success_rate": 0.2,
+  "average_total_score": 2.9,
+  "average_latency_seconds": 164.28,
+  "total_elapsed_seconds": 1642.82,
+  "cases": [
+    {
+      "index": 1,
+      "person_name": "Satya Nadella",
+      "meeting_context": "Enterprise software partnership discussion",
+      "success": false,
+      "elapsed_seconds": 155.16,
+      "scores": {
+        "section_hits": 0,
+        "url_count": 0,
+        "fact_like_count": 0,
+        "actionable_score": 0,
+        "grounding_score": 0,
+        "uncertainty_score": 0,
+        "total_score": 0
+      }
+    },
+    {
+      "index": 2,
+      "person_name": "Jensen Huang",
+      "meeting_context": "AI infrastructure procurement conversation",
+      "success": false,
+      "elapsed_seconds": 110.84,
+      "scores": {
+        "section_hits": 0,
+        "url_count": 0,
+        "fact_like_count": 0,
+        "actionable_score": 0,
+        "grounding_score": 0,
+        "uncertainty_score": 0,
+        "total_score": 0
+      }
+    },
+    {
+      "index": 3,
+      "person_name": "Mary Barra",
+      "meeting_context": "Automotive technology partnership pitch",
+      "success": false,
+      "elapsed_seconds": 349.65,
+      "scores": {
+        "section_hits": 0,
+        "url_count": 0,
+        "fact_like_count": 0,
+        "actionable_score": 0,
+        "grounding_score": 0,
+        "uncertainty_score": 0,
+        "total_score": 0
+      }
+    },
+    {
+      "index": 4,
+      "person_name": "Reed Hastings",
+      "meeting_context": "Media strategy advisory call",
+      "success": false,
+      "elapsed_seconds": 80.46,
+      "scores": {
+        "section_hits": 0,
+        "url_count": 0,
+        "fact_like_count": 0,
+        "actionable_score": 0,
+        "grounding_score": 0,
+        "uncertainty_score": 0,
+        "total_score": 0
+      }
+    },
+    {
+      "index": 5,
+      "person_name": "Adena Friedman",
+      "meeting_context": "Fintech market-data integration meeting",
+      "success": false,
+      "elapsed_seconds": 2.56,
+      "scores": {
+        "section_hits": 0,
+        "url_count": 0,
+        "fact_like_count": 0,
+        "actionable_score": 0,
+        "grounding_score": 0,
+        "uncertainty_score": 0,
+        "total_score": 0
+      }
+    },
+    {
+      "index": 6,
+      "person_name": "Demis Hassabis",
+      "meeting_context": "Applied AI research collaboration call",
+      "success": false,
+      "elapsed_seconds": 282.93,
+      "scores": {
+        "section_hits": 0,
+        "url_count": 0,
+        "fact_like_count": 0,
+        "actionable_score": 0,
+        "grounding_score": 0,
+        "uncertainty_score": 0,
+        "total_score": 0
+      }
+    },
+    {
+      "index": 7,
+      "person_name": "Susan Wojcicki",
+      "meeting_context": "Creator economy product strategy interview",
+      "success": true,
+      "elapsed_seconds": 23.05,
+      "scores": {
+        "section_hits": 1,
+        "url_count": 0,
+        "fact_like_count": 5,
+        "actionable_score": 0,
+        "grounding_score": 5,
+        "uncertainty_score": 0,
+        "total_score": 6
+      }
+    },
+    {
+      "index": 8,
+      "person_name": "Arvind Krishna",
+      "meeting_context": "Enterprise AI transformation workshop",
+      "success": false,
+      "elapsed_seconds": 208.21,
+      "scores": {
+        "section_hits": 0,
+        "url_count": 0,
+        "fact_like_count": 0,
+        "actionable_score": 0,
+        "grounding_score": 0,
+        "uncertainty_score": 0,
+        "total_score": 0
+      }
+    },
+    {
+      "index": 9,
+      "person_name": "Melanie Perkins",
+      "meeting_context": "B2B design platform integration pitch",
+      "success": false,
+      "elapsed_seconds": 212.7,
+      "scores": {
+        "section_hits": 0,
+        "url_count": 0,
+        "fact_like_count": 0,
+        "actionable_score": 0,
+        "grounding_score": 0,
+        "uncertainty_score": 0,
+        "total_score": 0
+      }
+    },
+    {
+      "index": 10,
+      "person_name": "Patrick Collison",
+      "meeting_context": "Payments infrastructure partner review",
+      "success": true,
+      "elapsed_seconds": 217.25,
+      "scores": {
+        "section_hits": 7,
+        "url_count": 0,
+        "fact_like_count": 39,
+        "actionable_score": 10,
+        "grounding_score": 6,
+        "uncertainty_score": 0,
+        "total_score": 23
+      }
+    }
+  ]
+}

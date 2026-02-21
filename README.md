@@ -1,6 +1,6 @@
 # PersonaPreparation
 
-**AI meeting strategist that researches people and tells you exactly what to do—and what to avoid.**
+**AI meeting strategist that researches people and tells you exactly what to do -- and what to avoid.**
 
 Get strategic meeting briefs with conversation openers based on their recent work, DO's and DON'Ts with reasoning, and bottom-line recommendations tailored to your meeting context. Powered by autonomous Claude agent with real-time web research.
 
@@ -11,13 +11,15 @@ _Real-time research progress with live tool execution tracking_
 
 ## Features
 
-- 🔍 **Real-time Research**: Live web search using Tavily, Brave Search, and Firecrawl APIs
-- 🤖 **Autonomous Agent**: Claude decides which tools to use and when (up to 15 iterations)
-- 📊 **Structured Briefs**: Professional summaries with insights, conversation starters, and background
-- 🌐 **Web Interface**: Modern Next.js frontend with **live SSE streaming** progress updates
-- ⚡ **Real-time Feedback**: See exactly what the agent is doing as it researches (tool calls, results, iterations)
-- 🚀 **FastAPI Backend**: High-performance async API with streaming support
-- 🎯 **Context-Aware**: Tailors research to your meeting context
+- **Real-time Research**: Live web search using Tavily, Brave Search, and Firecrawl APIs
+- **Autonomous Agent**: Claude decides which tools to use and when (up to 15 iterations)
+- **Quality Guardrails**: URL filtering, deduplication, domain diversity caps, duplicate tool-call skipping, and evidence-threshold synthesis nudges
+- **Structured Briefs**: Professional summaries with insights, conversation starters, and background
+- **Web Interface**: Modern Next.js frontend with **live SSE streaming** progress updates
+- **Real-time Feedback**: See exactly what the agent is doing as it researches (tool calls, results, iterations)
+- **FastAPI Backend**: High-performance async API with streaming support
+- **Context-Aware**: Tailors research to your meeting context
+- **Identity Check First**: Runs low-cost disambiguation and asks you to pick the right person before deep research
 
 ## Project Structure
 
@@ -26,7 +28,12 @@ PersonaPreparation/
 ├── backend/                          # Python backend
 │   ├── main.py                       # FastAPI server
 │   ├── models.py                     # Pydantic models
-│   ├── persona_agent_tools.py        # Core agent with web tools
+│   ├── agent.py                      # Core agent with web tools
+│   ├── tools.py                      # Tool execution & result filtering
+│   ├── config.py                     # Prompt contract + constants
+│   ├── utils.py                      # Utility functions
+│   ├── cli.py                        # CLI runner
+│   ├── scripts/                      # Test scripts
 │   ├── pyproject.toml                # Python dependencies
 │   ├── uv.lock                       # Locked dependencies
 │   └── .env                          # Backend environment variables (not in repo)
@@ -43,6 +50,9 @@ PersonaPreparation/
 │   │       └── utils.ts              # Utility functions
 │   ├── package.json                  # Node dependencies
 │   └── .env.local                    # Frontend environment variables (not in repo)
+├── docs/                             # Documentation
+│   ├── tech_spec.md                  # Technical specification
+│   └── progress.md                   # Development progress
 └── README.md                         # This file
 ```
 
@@ -125,22 +135,25 @@ Frontend will be available at: `http://localhost:3000`
 2. Enter the person's name (required)
 3. Add meeting context (required) - e.g., "job interview", "sales call", "pitch review"
 4. Click "Generate Meeting Brief"
-5. **Watch real-time progress** as the agent searches and scrapes (30-60 seconds)
+5. Confirm identity in **Identity Check**:
+   - If multiple candidates appear, select one person.
+   - If no strong match appears, you can continue anyway.
+6. **Watch real-time progress** as the agent searches and scrapes (30-60 seconds)
    - See tool calls: "Searching with Tavily...", "Scraping webpage..."
-   - View results: "✓ Found 5 results"
+   - View results: "Found 5 results"
    - Track iterations and research steps
-6. View the structured brief with insights and conversation starters
-7. Copy or save the brief for your meeting
+7. View the structured brief with insights and conversation starters
+8. Copy or save the brief for your meeting
 
 > **Note**: The web interface currently requires meeting context for better results. Use the CLI version if you want context to be truly optional.
 
-### CLI Version (Legacy)
+### CLI Version
 
-You can still use the original command-line interface:
+You can also use the command-line interface:
 
 ```bash
 cd backend
-uv run persona_agent_tools.py
+uv run cli.py
 ```
 
 The CLI version allows optional meeting context and saves briefs to the directory specified by `PERSONA_BRIEF_DIR` (defaults to `~/PersonaPreparationBriefs`) as markdown files.
@@ -170,65 +183,32 @@ The CLI version allows optional meeting context and saves briefs to the director
 
 ### Agent Research Flow
 
-The agent autonomously decides:
+The agent follows a deterministic retrieval plan with guardrails:
 
-1. **Broad search** for professional background (Tavily)
-2. **Recent news** with freshness filters (Brave)
-3. **Deep dives** into specific URLs (Firecrawl)
-4. **Achievements** research (publications, awards)
-5. **Synthesis** into structured brief
+1. **Identity search** (role/company/background)
+2. **Recency search** (last 6-12 months, freshness-focused)
+3. **Perspective search** (interviews, talks, opinions)
+4. **Targeted scraping** only on high-signal URLs
+5. **Synthesis** with required sections, explicit unknowns, and source URLs
 
-## API Documentation
+Built-in guardrails:
+- Low-value URL filtering (/login, /search, /tag, privacy/terms)
+- URL dedup + per-domain result caps
+- Duplicate tool-call skipping
+- Low-value iteration stop nudges to reduce redundant calls
+- Compact tool payloads to reduce token pressure
 
-### Backend Endpoints
+## API Endpoints
 
-**Health Check**
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`  | `/api/health` | Health check |
+| `POST` | `/api/research/disambiguate` | Quick identity disambiguation (low cost) |
+| `POST` | `/api/research` | Research a person and return a brief |
+| `POST` | `/api/research/stream` | Same as above, but streams progress via SSE |
 
-```
-GET /api/health
-Response: { "status": "healthy", "timestamp": "..." }
-```
-
-**Research Person (Standard)**
-
-```
-POST /api/research
-Request: {
-  "person_name": "string (required)",
-  "meeting_context": "string (optional)"
-}
-
-Response: {
-  "success": boolean,
-  "brief": "markdown string",
-  "person_name": "string",
-  "timestamp": "ISO-8601",
-  "error_message": "string (if failed)"
-}
-```
-
-**Research Person (Streaming SSE)**
-
-```
-POST /api/research/stream
-Request: {
-  "person_name": "string (required)",
-  "meeting_context": "string (optional)"
-}
-
-Response: Server-Sent Events stream
-Event types:
-  - start: Research begins
-  - thinking: Agent processing
-  - tool_call: Tool being executed (tavily_search, brave_search, firecrawl_scrape)
-  - tool_result: Tool execution result with summary
-  - complete: Final brief ready
-  - error: Error occurred
-
-Event format:
-event: <type>
-data: {"event_type": "...", "data": {...}, "timestamp": "...", "iteration": N}
-```
+All `POST` endpoints accept `person_name` (required) and `meeting_context` (optional).
+Full request/response schemas are available at `http://localhost:8000/docs` (Swagger UI) when the backend is running.
 
 ## Development
 
@@ -245,6 +225,27 @@ uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 # View API docs (when server is running)
 # Open http://localhost:8000/docs
+```
+
+### Backend Test Workflow (CLI First)
+
+Run local script tests (cheap, no model calls):
+
+```bash
+cd backend
+uv run python scripts/test_config.py
+uv run python scripts/test_utils.py
+uv run python scripts/test_tools.py
+uv run python scripts/test_agent.py
+uv run python scripts/test_cli.py
+uv run python scripts/test_prompt_contract.py
+```
+
+Cost-controlled live sanity check (uses real APIs/model):
+
+```bash
+cd backend
+uv run python scripts/eval_quality.py --output scripts/eval_after.json --limit 1
 ```
 
 ### Frontend Development
@@ -288,17 +289,19 @@ npm start
 
 **Backend:**
 
-- [backend/main.py](backend/main.py) - FastAPI application with SSE streaming
-- [backend/models.py](backend/models.py) - Pydantic models for requests/responses
-- [backend/persona_agent_tools.py](backend/persona_agent_tools.py) - Core agent logic with tool execution
+- `backend/main.py` - FastAPI application with SSE streaming
+- `backend/models.py` - Pydantic models for requests/responses
+- `backend/agent.py` - Core agent loop and streaming/non-streaming wrappers
+- `backend/tools.py` - Search/scrape execution and result quality filtering
+- `backend/config.py` - Prompt contract + timeout/quality constants
+- `backend/utils.py` - Utility helpers (validation, file saving)
+- `backend/cli.py` - CLI runner
 
 **Frontend:**
 
-- [frontend/src/app/page.tsx](frontend/src/app/page.tsx) - Main research page with live updates
-- [frontend/src/lib/api.ts](frontend/src/lib/api.ts) - API client with SSE support
-- [frontend/src/app/layout.tsx](frontend/src/app/layout.tsx) - Root layout
-
-**Documentation:**
+- `frontend/src/app/page.tsx` - Main research page with live updates
+- `frontend/src/lib/api.ts` - API client with SSE support
+- `frontend/src/app/layout.tsx` - Root layout
 
 ## Environment Variables
 
@@ -306,7 +309,7 @@ npm start
 
 ```bash
 ANTHROPIC_API_KEY=sk-...              # Required
-API_AUTH_TOKEN=your_shared_token     # Required for FastAPI endpoints
+API_AUTH_TOKEN=your_shared_token      # Required for FastAPI endpoints
 TAVILY_API_KEY=tvly-...               # Optional (for web search)
 FIRECRAWL_API_KEY=fc-...              # Optional (for scraping)
 BRAVE_SEARCH_API_KEY=...              # Optional (for news)
@@ -359,11 +362,11 @@ Users should:
 
 ## Roadmap
 
-- ✅ **MVP**: CLI agent with real-time web research
-- ✅ **Web UI**: Next.js frontend with FastAPI backend
-- ✅ **Real-time Streaming**: Live progress updates via Server-Sent Events (SSE)
-- 📋 **Export Options**: PDF export, email integration
-- 📋 **History**: Brief history and search
+- [x] **MVP**: CLI agent with real-time web research
+- [x] **Web UI**: Next.js frontend with FastAPI backend
+- [x] **Real-time Streaming**: Live progress updates via Server-Sent Events (SSE)
+- [ ] **Export Options**: PDF export, email integration
+- [ ] **History**: Brief history and search
 
 ## Troubleshooting
 
@@ -390,8 +393,9 @@ Users should:
 - Verify API keys in `backend/.env`
 - Check API rate limits and quotas
 - Review backend logs for errors
+- If Anthropic usage is high, use script tests first and keep live eval to `--limit 1`
 
-## 🤝 Contributing
+## Contributing
 
 Contributions, issues, and feature requests are welcome!
 
@@ -403,41 +407,36 @@ Contributions, issues, and feature requests are welcome!
 
 Please follow [Conventional Commits](https://www.conventionalcommits.org/) for commit messages.
 
-## 👤 Author
+## Author
 
 **Rahat Kabir**
 
 - GitHub: [@Rahat-Kabir](https://github.com/Rahat-Kabir)
 - Repository: [PersonaPreparation](https://github.com/Rahat-Kabir/PersonaPreperation)
+- Email: rahatkabir0101@gmail.com
 
-## ⭐ Show Your Support
-
-Give a ⭐️ if this project helped you prepare for better meetings!
-
-## 📝 License
+## License
 
 This project is [MIT](LICENSE) licensed.
 
-rahatkabir0101@gmail.com
+Copyright 2025 Rahat Kabir
 
-Copyright © 2025 Rahat Kabir
-
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - [Anthropic](https://www.anthropic.com/) for Claude AI
 - [Tavily](https://tavily.com/) for AI-powered search API
 - [Firecrawl](https://firecrawl.dev/) for web scraping capabilities
 - [Brave](https://brave.com/search/api/) for search API
 
-## 💬 Support
+## Support
 
 For issues and questions:
 
-- 🐛 [Report bugs](https://github.com/Rahat-Kabir/PersonaPreperation/issues)
-- 💡 [Request features](https://github.com/Rahat-Kabir/PersonaPreperation/issues)
-- 📖 [Anthropic SDK Docs](https://github.com/anthropics/anthropic-sdk-python)
-- 📚 [Claude Documentation](https://docs.anthropic.com/)
+- [Report bugs](https://github.com/Rahat-Kabir/PersonaPreperation/issues)
+- [Request features](https://github.com/Rahat-Kabir/PersonaPreperation/issues)
+- [Anthropic SDK Docs](https://github.com/anthropics/anthropic-sdk-python)
+- [Claude Documentation](https://docs.anthropic.com/)
 
 ---
 
-**Built with Claude AI** • Empowering confident, prepared meetings
+**Built with Claude AI** - Empowering confident, prepared meetings

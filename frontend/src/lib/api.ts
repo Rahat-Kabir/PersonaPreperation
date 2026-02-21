@@ -13,6 +13,31 @@ interface ResearchResponse {
   person_name: string;
   timestamp: string;
   error_message?: string | null;
+  disambiguation_status?: "direct" | "ambiguous" | "no_match" | null;
+  selected_identity_name?: string | null;
+}
+
+export interface SelectedIdentity {
+  name: string;
+  title?: string | null;
+  organization?: string | null;
+  location?: string | null;
+  profile_url?: string | null;
+}
+
+export interface IdentityCandidate extends SelectedIdentity {
+  id: string;
+  summary?: string | null;
+  reason: string;
+  confidence: number;
+}
+
+export interface DisambiguationResponse {
+  needs_disambiguation: boolean;
+  status: "direct" | "ambiguous" | "no_match";
+  query: string;
+  candidates: IdentityCandidate[];
+  recommendation: string;
 }
 
 export interface AgentEvent {
@@ -21,21 +46,6 @@ export interface AgentEvent {
   timestamp: string;
   iteration: number | null;
 }
-
-const sanitizeBrief = (text: string) => {
-  if (!text) return "";
-  return text
-    .replace(/```[\s\S]*?```/g, "")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/[*_]{1,3}([^*_]+)[*_]{1,3}/g, "$1")
-    .replace(/^[#>]+\s*/gm, "")
-    .replace(/^-\s+/gm, "• ")
-    .replace(/^\*\s+/gm, "• ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-};
 
 export async function generateBrief(personName: string, meetingContext: string) {
   const headers: HeadersInit = {
@@ -62,7 +72,32 @@ export async function generateBrief(personName: string, meetingContext: string) 
     throw new Error(data.error_message || "Research did not return a brief.");
   }
 
-  return sanitizeBrief(data.brief);
+  return data.brief;
+}
+
+export async function disambiguatePerson(
+  personName: string,
+  meetingContext: string
+): Promise<DisambiguationResponse> {
+  const headers: HeadersInit = {
+    "Content-Type": "application/json"
+  };
+
+  if (API_ACCESS_TOKEN) {
+    headers["X-API-Key"] = API_ACCESS_TOKEN;
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/research/disambiguate`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ person_name: personName, meeting_context: meetingContext })
+  });
+
+  if (!response.ok) {
+    throw new Error("Unable to disambiguate person. Please try again.");
+  }
+
+  return (await response.json()) as DisambiguationResponse;
 }
 
 export async function generateBriefStream(
@@ -70,7 +105,8 @@ export async function generateBriefStream(
   meetingContext: string,
   onEvent: (event: AgentEvent) => void,
   onComplete: (brief: string) => void,
-  onError: (error: string) => void
+  onError: (error: string) => void,
+  options?: { selectedIdentity?: SelectedIdentity; continueAnyway?: boolean }
 ): Promise<void> {
   try {
     const headers: HeadersInit = {
@@ -84,11 +120,25 @@ export async function generateBriefStream(
     const response = await fetch(`${API_BASE_URL}/api/research/stream`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ person_name: personName, meeting_context: meetingContext })
+      body: JSON.stringify({
+        person_name: personName,
+        meeting_context: meetingContext,
+        selected_identity: options?.selectedIdentity,
+        continue_anyway: options?.continueAnyway || false
+      })
     });
 
     if (!response.ok) {
-      throw new Error("Unable to connect to research service. Please try again.");
+      let detail = "Unable to connect to research service. Please try again.";
+      try {
+        const data = await response.json();
+        if (data?.detail) {
+          detail = data.detail;
+        }
+      } catch {
+        // Keep default message if response is non-JSON.
+      }
+      throw new Error(detail);
     }
 
     const reader = response.body?.getReader();
@@ -117,7 +167,7 @@ export async function generateBriefStream(
 
         try {
           // Parse SSE format: "event: <type>\ndata: <json>"
-          const eventMatch = line.match(/event:\s*(\w+)\ndata:\s*(.+)/s);
+          const eventMatch = line.match(/event:\s*(\w+)\ndata:\s*([\s\S]+)/);
           if (eventMatch) {
             const [, eventType, eventData] = eventMatch;
             const event: AgentEvent = JSON.parse(eventData);
@@ -127,7 +177,7 @@ export async function generateBriefStream(
 
             // Handle completion
             if (event.event_type === "complete" && event.data.brief) {
-              onComplete(sanitizeBrief(event.data.brief));
+              onComplete(event.data.brief);
             }
 
             // Handle errors

@@ -1,10 +1,6 @@
-# Documentation for AI assistants (project-specific)
-CLAUDE.md
-AGENTS.md
-
 # Environment variables
 .env
-.env.local
+.env.*
 
 # Python
 __pycache__/
@@ -37,3 +33,13 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code local settings
+.claude/
+
+CLAUDE.md
+AGENTS.md
+
+# Build artifacts
+frontend/tsconfig.tsbuildinfo
+
