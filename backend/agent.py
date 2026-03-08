@@ -91,24 +91,44 @@ def _extract_hint_tokens(hint_text: str) -> list[str]:
         return []
     stop = {
         "the", "and", "for", "with", "from", "this", "that", "your", "you",
-        "meeting", "student", "at", "of", "in", "to", "why", "are",
+        "meeting", "why", "are",
     }
-    tokens = [t for t in re.findall(r"[a-zA-Z]{3,}", hint_text.lower()) if t not in stop]
+    tokens = [t for t in re.findall(r"[a-zA-Z]{2,}", hint_text.lower()) if t not in stop]
     return list(dict.fromkeys(tokens))
 
 
+def _acronym_matches_text(acronym: str, text: str) -> bool:
+    """Check if a short token is an acronym of consecutive words in the text.
+
+    Example: 'mit' matches 'Massachusetts Institute of Technology'
+             'nsu' matches 'North South University'
+    Works for any abbreviation dynamically — no hardcoding needed.
+    """
+    if len(acronym) < 2 or len(acronym) > 6:
+        return False
+    words = [w for w in re.findall(r"[a-z]+", text.lower()) if len(w) > 1]
+    for i in range(len(words) - len(acronym) + 1):
+        initials = "".join(w[0] for w in words[i : i + len(acronym)])
+        if initials == acronym:
+            return True
+    return False
+
+
 def _candidate_hint_match_count(title: str, snippet: str, url: str, hint_tokens: list[str]) -> int:
-    """Count hint token overlaps in candidate text/url."""
+    """Count hint token overlaps in candidate text/url.
+
+    Uses dynamic acronym expansion so any abbreviation (nsu, mit, iit, etc.)
+    matches its full form in the candidate text — no country-specific hardcoding.
+    """
     if not hint_tokens:
         return 0
     hay = f"{title} {snippet} {url}".lower()
     count = 0
     for token in hint_tokens:
-        if token in hay:
+        if re.search(rf"\b{re.escape(token)}\b", hay):
             count += 1
-        elif token == "nsu" and ("north south university" in hay or re.search(r"\bnsu\b", hay)):
-            count += 1
-        elif token == "bangladesh" and (".bd" in hay or "dhaka" in hay):
+        elif _acronym_matches_text(token, hay):
+            # Short token is an acronym of words found in the candidate text
             count += 1
     return count
 
@@ -355,54 +375,86 @@ def _dedup_and_rank_candidates(candidates: list[Dict[str, Any]], max_candidates:
     return deduped[:max_candidates]
 
 
+def _classify_hint(hint_text: str, hint_tokens: list[str]) -> Dict[str, bool]:
+    """Classify what kind of context the hint describes to drive smarter queries."""
+    lowered = hint_text.lower()
+    token_set = set(hint_tokens)
+
+    academic_signals = {
+        "student", "university", "college", "institute", "faculty", "professor",
+        "phd", "researcher", "academia", "undergraduate", "graduate", "alumni",
+        "school", "department", "engineering", "science", "technology",
+    }
+    professional_signals = {
+        "ceo", "cto", "coo", "founder", "director", "manager", "engineer",
+        "developer", "architect", "consultant", "analyst", "officer", "president",
+        "vp", "head", "lead", "executive",
+    }
+
+    is_academic = bool(token_set & academic_signals) or any(s in lowered for s in academic_signals)
+    is_professional = bool(token_set & professional_signals) or any(s in lowered for s in professional_signals)
+
+    return {"academic": is_academic, "professional": is_professional}
+
+
 async def disambiguate_person_name(
     tool_executor: ToolExecutor,
     person_name: str,
     meeting_context: str = "",
     max_candidates: int = 7,
 ) -> Dict[str, Any]:
-    """Run a cheap, quick search pass to detect identity ambiguity."""
+    """Run a cheap, quick search pass to detect identity ambiguity.
+
+    All search queries are executed in parallel for speed.
+    Queries are adapted based on what the hint describes (academic, professional, etc.).
+    """
     query = person_name.strip()
     base_name, inline_hint = _parse_name_and_hint(person_name)
     identity_subject = base_name or query
     merged_context = " ".join(part for part in [inline_hint, meeting_context.strip()] if part).strip()
     hint_tokens = _extract_hint_tokens(merged_context)
+    hint_class = _classify_hint(merged_context, hint_tokens)
 
+    # --- Build queries ---
     identity_query = f"{identity_subject} current role company linkedin profile"
-    context_query = f"\"{identity_subject}\" {merged_context} linkedin profile".strip()
-    alternate_query = f"\"{identity_subject}\" {merged_context} portfolio website".strip()
-    linkedin_query = f"\"{identity_subject}\" site:linkedin.com/in"
-    public_profile_query = f"\"{identity_subject}\" biography profile"
+    linkedin_query = f'"{identity_subject}" site:linkedin.com/in'
+    public_profile_query = f'"{identity_subject}" biography profile'
 
-    search_results: list[Dict[str, Any]] = []
-
-    tavily = await tool_executor.execute_tool("tavily_search", {"query": identity_query, "max_results": 6})
-    if "error" not in tavily:
-        search_results.extend(tavily.get("results", []))
-
-    tavily_linkedin = await tool_executor.execute_tool("tavily_search", {"query": linkedin_query, "max_results": 4})
-    if "error" not in tavily_linkedin:
-        search_results.extend(tavily_linkedin.get("results", []))
-
-    tavily_public = await tool_executor.execute_tool("tavily_search", {"query": public_profile_query, "max_results": 4})
-    if "error" not in tavily_public:
-        search_results.extend(tavily_public.get("results", []))
+    # Assemble the task list — always include the three base queries
+    tasks = [
+        tool_executor.execute_tool("tavily_search", {"query": identity_query, "max_results": 6}),
+        tool_executor.execute_tool("tavily_search", {"query": linkedin_query, "max_results": 4}),
+        tool_executor.execute_tool("tavily_search", {"query": public_profile_query, "max_results": 4}),
+    ]
 
     if merged_context:
-        tavily_context = await tool_executor.execute_tool("tavily_search", {"query": context_query, "max_results": 6})
-        if "error" not in tavily_context:
-            search_results.extend(tavily_context.get("results", []))
+        context_query = f'"{identity_subject}" {merged_context} linkedin profile'.strip()
+        alternate_query = f'"{identity_subject}" {merged_context} portfolio website'.strip()
 
-        brave = await tool_executor.execute_tool(
-            "brave_search",
-            {"query": context_query, "count": 6, "freshness": "py"},
-        )
-        if "error" not in brave:
-            search_results.extend(brave.get("results", []))
+        tasks += [
+            tool_executor.execute_tool("tavily_search", {"query": context_query, "max_results": 6}),
+            tool_executor.execute_tool("brave_search", {"query": context_query, "count": 6, "freshness": "py"}),
+            tool_executor.execute_tool("tavily_search", {"query": alternate_query, "max_results": 4}),
+        ]
 
-        tavily_alt = await tool_executor.execute_tool("tavily_search", {"query": alternate_query, "max_results": 4})
-        if "error" not in tavily_alt:
-            search_results.extend(tavily_alt.get("results", []))
+        # Academic-specific queries: ResearchGate, university pages, etc.
+        if hint_class["academic"]:
+            academic_query = f'"{identity_subject}" {merged_context} researchgate academia profile'
+            tasks.append(tool_executor.execute_tool("tavily_search", {"query": academic_query, "max_results": 4}))
+
+        # Professional-specific queries: company pages, Crunchbase, etc.
+        if hint_class["professional"]:
+            professional_query = f'"{identity_subject}" {merged_context} company executive profile'
+            tasks.append(tool_executor.execute_tool("tavily_search", {"query": professional_query, "max_results": 4}))
+
+    # --- Run all queries in parallel ---
+    search_results: list[Dict[str, Any]] = []
+    raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+    for result in raw_results:
+        if isinstance(result, Exception):
+            continue
+        if "error" not in result:
+            search_results.extend(result.get("results", []))
 
     extracted: list[Dict[str, Any]] = []
     for result in search_results:
@@ -455,13 +507,25 @@ async def disambiguate_person_name(
         strict_applied = False
 
     if not candidates:
+        # Last-resort: broaden search using only the base name (drop hints entirely)
+        # to handle cases where the right result exists but didn't match hint tokens.
+        broad_query = f'"{identity_subject}" profile'
+        broad_result = await tool_executor.execute_tool("tavily_search", {"query": broad_query, "max_results": 6})
+        if "error" not in broad_result:
+            for result in broad_result.get("results", []):
+                candidate = _extract_fallback_candidate_from_result(result, person_name, identity_subject)
+                if candidate:
+                    candidates.append(candidate)
+            candidates = _dedup_and_rank_candidates(candidates, max_candidates=max_candidates)
+
+    if not candidates:
         return {
             "needs_disambiguation": False,
             "status": "no_match",
             "query": person_name,
             "candidates": [],
             "recommendation": (
-                "No confident match found. Add role/company/location or a profile URL, or use continue_anyway=true."
+                "No confident match found. Try adding more details like role, company, location, or a profile URL."
             ),
         }
 
