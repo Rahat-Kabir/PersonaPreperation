@@ -11,19 +11,21 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        serif: ["'Playfair Display'", ...fontFamily.serif],
-        sans: ["'Inter'", ...fontFamily.sans]
+        serif: ["'Instrument Serif'", ...fontFamily.serif],
+        sans: ["'Geist'", "system-ui", ...fontFamily.sans],
+        mono: ["'Geist Mono'", ...fontFamily.mono]
       },
       colors: {
         shell: {
-          background: "#f5f4f0",
-          border: "#d4d1c7",
-          accent: "#141210"
+          background: "#0C0C0E",
+          border: "#2A2A2E",
+          accent: "#E8C872"
         }
       },
       boxShadow: {
-        soft: "0 25px 60px rgba(20, 18, 16, 0.08)",
-        panel: "inset 0 1px 0 rgba(255,255,255,0.8), 0 20px 35px rgba(0,0,0,0.08)"
+        soft: "0 25px 60px rgba(0, 0, 0, 0.3)",
+        panel: "0 1px 0 rgba(255,255,255,0.03), 0 20px 40px rgba(0,0,0,0.25)",
+        glow: "0 0 40px rgba(232, 200, 114, 0.08)"
       }
     }
   },

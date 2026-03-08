@@ -1,5 +1,44 @@
 ﻿# Progress
 
+## 2026-03-09 - Full UI/UX redesign (dark editorial theme)
+
+### Decisions and implementation
+
+1. Redesigned entire frontend from warm/earthy light theme to dark editorial "intelligence briefing" aesthetic.
+   - Near-black backgrounds, warm white text, gold (#E8C872) accent color.
+   - Typography: Instrument Serif for headings, Geist for body, Geist Mono for activity feed.
+   - Noise grain overlay, gradient mesh backgrounds, custom scrollbar.
+
+2. Implemented 4-state app architecture in `frontend/src/app/page.tsx`.
+   - **Input**: Centered form with animated hero, floating labels, gold CTA button.
+   - **Disambiguation**: Radio-select candidate list (replaces card-per-candidate layout), confirm/skip flow.
+   - **Researching**: SVG progress ring showing iteration/15, live monospace activity feed with tool-specific icons.
+   - **Result**: Full-viewport markdown dossier with custom `prose-dossier` dark-theme rendering, copy-to-clipboard and new-research actions.
+   - CSS crossfade transitions between all states (translate + opacity + scale).
+
+3. Updated all UI primitives for dark theme.
+   - `button.tsx`: gold default variant, ghost, outline, danger variants.
+   - `input.tsx`, `textarea.tsx`: dark bg (#222226), gold focus ring.
+   - `label.tsx`: muted uppercase tracking.
+
+4. Updated `globals.css` with CSS custom properties, dark prose overrides, animations (slide-in-right, fade-up, pulse-glow, stagger-children).
+
+5. Updated `tailwind.config.ts` with new font families, dark color system, updated shadows.
+
+6. No API changes — all endpoints and request/response schemas unchanged.
+
+7. Added direct regression coverage for the redesigned frontend flow.
+   - `backend/scripts/test_frontend_research_flow.py` verifies the 4-state app contract, research progress UI, result actions, dark theme styles, and forced dark layout mode.
+
+### Test coverage
+
+1. All existing frontend regression tests pass:
+   - `test_frontend_api_key_copy.py` (3/3)
+   - `test_frontend_lock.py` (4/4)
+   - `test_frontend_api_config.py` (4/4)
+   - `test_frontend_research_flow.py` (6/6)
+2. `npm run build` passes clean.
+
 ## 2026-03-09 - API key UI copy correction
 
 ### Decisions and implementation

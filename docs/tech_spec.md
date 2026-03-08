@@ -80,26 +80,49 @@ backend/
 ```text
 frontend/src/
 |-- app/
-|   |-- page.tsx     # Form + disambiguation picker + streamed brief output
+|   |-- page.tsx     # 4-state app (input, disambiguation, researching, result)
+|   |-- globals.css  # Dark theme, CSS variables, animations, prose-dossier styles
 |   `-- layout.tsx
 |-- components/ui/
+|   |-- button.tsx   # CVA button (default/gold, ghost, outline, danger variants)
+|   |-- input.tsx    # Dark-themed input
+|   |-- textarea.tsx # Dark-themed textarea
+|   `-- label.tsx    # Uppercase tracking label
 `-- lib/
     |-- api.ts       # API client for disambiguation + streamed research
     `-- utils.ts
 ```
 
+### Design System (Dark Editorial Theme)
+
+- **Typography**: Instrument Serif (headings), Geist (body), Geist Mono (activity feed)
+- **Color palette**: Near-black backgrounds (#0C0C0E), warm white text (#F0EDE6), gold accent (#E8C872)
+- **Layout**: 4-state single-page app with crossfade transitions between states
+- **Prose rendering**: Custom `prose-dossier` class for dark-themed markdown briefs
+
+### 4-State App Architecture
+
+1. **Input** — centered form with hero text, person name + context inputs
+2. **Disambiguation** — radio-select candidate list with confirm/skip actions
+3. **Researching** — SVG progress ring (iteration/15) + live monospace activity feed
+4. **Result** — full-viewport markdown dossier with copy/new-research actions
+
+### Frontend Regression Checks
+
+- `backend/scripts/test_frontend_research_flow.py` verifies the 4-state UI contract, progress ring, disambiguation actions, result actions, dark theme stylesheet, and dark root layout.
+
 ### Markdown Rendering
 
-Briefs are rendered with `react-markdown` and `@tailwindcss/typography` classes.
+Briefs are rendered with `react-markdown` and custom `prose-dossier` styles (dark theme, gold headings, styled lists).
 
 ### Frontend Disambiguation Flow
 
 1. Submit form triggers `/api/research/disambiguate`.
-2. If status is `ambiguous`, UI renders candidate cards with "Select this person".
-3. If status is `no_match`, UI shows guidance and exposes "Continue anyway".
-4. Selecting a candidate passes `selected_identity` to `/api/research/stream`.
-5. "Continue anyway" passes `continue_anyway=true` to `/api/research/stream`.
-6. Candidate cards now show a short summary per person (role/company or snippet-derived summary) instead of name+link only.
+2. If status is `ambiguous`, app transitions to disambiguation state with radio-select candidate list.
+3. If status is `no_match`, disambiguation state shows guidance and "Skip" button.
+4. Selecting a candidate and clicking "Confirm & Research" passes `selected_identity` to `/api/research/stream`.
+5. "Skip" passes `continue_anyway=true` to `/api/research/stream`.
+6. Candidates show name, title, organization, summary, and profile URL in a stacked list.
 
 ### Disambiguation Candidate Quality Filters
 
