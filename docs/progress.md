@@ -1,5 +1,123 @@
 ﻿# Progress
 
+## 2026-03-09 - API key UI copy correction
+
+### Decisions and implementation
+
+1. Corrected the frontend API key settings copy in `frontend/src/app/page.tsx`.
+   - Previous copy incorrectly claimed the key was "Never sent to our servers."
+   - Updated copy now states the key is stored locally in the browser and sent only to the PersonaPreparation backend when research runs.
+
+2. Added regression coverage in `backend/scripts/test_frontend_api_key_copy.py`.
+   - Verifies the copy still mentions local browser storage.
+   - Verifies the copy states the key is sent only to the backend for research.
+   - Verifies the incorrect "Never sent to our servers" wording does not return.
+
+3. API structure review.
+   - No endpoint changes in this session.
+   - Current API remains:
+     - `GET /`
+     - `GET /api/health`
+     - `POST /api/research/disambiguate`
+     - `POST /api/research`
+     - `POST /api/research/stream`
+
+### Test coverage updates (`backend/scripts/`)
+
+1. Added `test_frontend_api_key_copy.py` for UI copy regression coverage.
+2. Validation to run for this change:
+   - `python backend/scripts/test_frontend_api_key_copy.py`
+
+## 2026-03-09 - User-provided Anthropic API key from frontend
+
+### Decisions and implementation
+
+1. Added `anthropic_api_key` optional field to `ResearchRequest` in `backend/models.py`.
+   - Users can now supply their own Anthropic API key per request.
+
+2. Added `get_anthropic_client()` helper in `backend/main.py`.
+   - Creates per-request Anthropic client using user key or env fallback.
+   - Raises HTTP 400 if no key is available from either source.
+
+3. Made `ANTHROPIC_API_KEY` env var optional at server startup.
+   - Server can boot without it; users supply their own key via the frontend.
+
+4. Updated all three research endpoints (`/api/research`, `/api/research/stream`, `/api/research/disambiguate`) to use per-request client.
+
+5. Updated `frontend/src/lib/api.ts`:
+   - All API functions (`generateBrief`, `disambiguatePerson`, `generateBriefStream`) accept optional `anthropicApiKey` and pass it in request body.
+   - Extracted shared `buildHeaders()` helper.
+
+6. Built API key settings UI in `frontend/src/app/page.tsx`:
+   - Key icon button in header with green dot indicator when key is saved.
+   - Collapsible settings panel with password input, show/hide toggle, save/clear actions.
+   - Key persisted in `localStorage` (`persona_anthropic_api_key`).
+   - Masked key display after saving.
+
+### Test coverage updates (`backend/scripts/`)
+
+1. Added `test_user_api_key.py`:
+   - ResearchRequest accepts anthropic_api_key field
+   - Key defaults to None
+   - get_anthropic_client uses user-provided key
+   - get_anthropic_client falls back to env
+   - get_anthropic_client raises 400 when no key available
+2. All 5 tests passed.
+
+## 2026-03-09 - Frontend Baseline browser data refresh
+
+### Decisions and implementation
+
+1. Refreshed the frontend Baseline browser dataset.
+   - Added direct devDependency: `baseline-browser-mapping` in `frontend/package.json`
+   - Updated `frontend/package-lock.json` to `baseline-browser-mapping@2.10.0`
+   - Goal: remove the stale-data warning emitted during `next dev` / frontend compilation.
+
+2. Added a repository regression script in `backend/scripts/test_frontend_lock.py`.
+   - Verifies `frontend/package.json` keeps the explicit devDependency.
+   - Verifies `frontend/package-lock.json` contains the matching installed package entry.
+
+3. API structure review.
+   - No API endpoint changes in this session.
+   - Current API remains:
+     - `GET /`
+     - `GET /api/health`
+     - `POST /api/research/disambiguate`
+     - `POST /api/research`
+     - `POST /api/research/stream`
+
+### Test coverage updates (`backend/scripts/`)
+
+1. Added `test_frontend_lock.py` for frontend lockfile regression coverage.
+2. Validation to run for this change:
+   - `python backend/scripts/test_frontend_lock.py`
+   - `npm run build`
+
+## 2026-03-09 - Frontend Fast Refresh hardening
+
+### Decisions and implementation
+
+1. Reduced client module side effects in `frontend/src/lib/api.ts`.
+   - Removed module-scope `NEXT_PUBLIC_API_URL` validation.
+   - Added `getApiBaseUrl()` so the env check runs only when an API request is actually made.
+   - Goal: keep config failures explicit without forcing the whole page module to fail during dev reload/HMR evaluation.
+
+2. API structure review.
+   - No API endpoint changes in this session.
+   - Current API remains:
+     - `GET /`
+     - `GET /api/health`
+     - `POST /api/research/disambiguate`
+     - `POST /api/research`
+     - `POST /api/research/stream`
+
+### Test coverage updates (`backend/scripts/`)
+
+1. Added `test_frontend_api_config.py` for frontend API config-loading behavior.
+2. Validation to run for this change:
+   - `python backend/scripts/test_frontend_api_config.py`
+   - `npm run build`
+
 ## 2026-02-22 - Explicit name disambiguation gate before deep research
 
 ### Decisions and implementation

@@ -99,6 +99,17 @@ async def enforce_rate_limit(request: Request) -> None:
         timestamps.append(now)
 
 
+def get_anthropic_client(user_api_key: Optional[str] = None) -> Anthropic:
+    """Return an Anthropic client using the user-provided key or the server default."""
+    key = user_api_key or os.getenv("ANTHROPIC_API_KEY")
+    if not key:
+        raise HTTPException(
+            status_code=400,
+            detail="No Anthropic API key available. Provide one via the settings panel or configure ANTHROPIC_API_KEY on the server.",
+        )
+    return Anthropic(api_key=key)
+
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize API clients on startup."""
@@ -106,16 +117,17 @@ async def startup_event():
 
     logger.info("Initializing PersonaPreparation API...")
 
-    # Check for required API key
-    if not os.getenv("ANTHROPIC_API_KEY"):
-        logger.error("ANTHROPIC_API_KEY not found in environment variables")
-        raise RuntimeError("ANTHROPIC_API_KEY is required")
     if not API_AUTH_TOKEN:
         logger.error("API_AUTH_TOKEN not found in environment variables")
         raise RuntimeError("API_AUTH_TOKEN is required for authenticated access")
 
-    # Initialize Anthropic client
-    anthropic_client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    # Initialize default Anthropic client (optional – users can supply their own key)
+    env_key = os.getenv("ANTHROPIC_API_KEY")
+    if env_key:
+        anthropic_client = Anthropic(api_key=env_key)
+        logger.info("Default Anthropic client initialized from environment.")
+    else:
+        logger.warning("ANTHROPIC_API_KEY not set – users must supply their own key.")
 
     # Initialize tool executor
     tool_executor = ToolExecutor()
@@ -171,10 +183,11 @@ async def research_person(
         logger.warning(f"Invalid person name: {error_msg}")
         raise HTTPException(status_code=400, detail=error_msg)
 
-    # Check if clients are initialized
-    if not anthropic_client or not tool_executor:
-        logger.error("API clients not initialized")
+    if not tool_executor:
+        logger.error("Tool executor not initialized")
         raise HTTPException(status_code=500, detail="API not properly initialized")
+
+    client = get_anthropic_client(request.anthropic_api_key)
 
     try:
         selected_identity_dict = request.selected_identity.model_dump() if request.selected_identity else None
@@ -205,7 +218,7 @@ async def research_person(
         # Perform research
         logger.info("Starting research workflow.")
         brief = await research_person_with_tools(
-            client=anthropic_client,
+            client=client,
             tool_executor=tool_executor,
             person_name=request.person_name,
             meeting_context=request.meeting_context or "",
@@ -220,7 +233,7 @@ async def research_person(
                 brief=brief,
                 person_name=request.person_name,
                 timestamp=datetime.now().isoformat(),
-                iteration_count=None,  # Could track this if needed
+                iteration_count=None,
                 disambiguation_status=(disambiguation["status"] if disambiguation else None),
                 selected_identity_name=(selected_identity_dict.get("name") if selected_identity_dict else None),
             )
@@ -266,10 +279,11 @@ async def research_person_stream(
         logger.warning(f"Invalid person name: {error_msg}")
         raise HTTPException(status_code=400, detail=error_msg)
 
-    # Check if clients are initialized
-    if not anthropic_client or not tool_executor:
-        logger.error("API clients not initialized")
+    if not tool_executor:
+        logger.error("Tool executor not initialized")
         raise HTTPException(status_code=500, detail="API not properly initialized")
+
+    client = get_anthropic_client(request.anthropic_api_key)
 
     selected_identity_dict = request.selected_identity.model_dump() if request.selected_identity else None
     disambiguation = None
@@ -299,7 +313,7 @@ async def research_person_stream(
 
             # Stream events from the agent
             async for event_dict in research_person_with_tools_stream(
-                client=anthropic_client,
+                client=client,
                 tool_executor=tool_executor,
                 person_name=request.person_name,
                 meeting_context=request.meeting_context or "",

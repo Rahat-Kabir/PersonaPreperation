@@ -57,6 +57,7 @@ backend/
 
 - `ResearchRequest.selected_identity` (optional identity anchor selected by user)
 - `ResearchRequest.continue_anyway` (allow deep research despite ambiguity/no-match)
+- `ResearchRequest.anthropic_api_key` (optional user-provided Anthropic API key; overrides server default)
 - `ResearchResponse.disambiguation_status` (`direct | ambiguous | no_match`)
 - `ResearchResponse.selected_identity_name` (identity used in deep research)
 - New response model: `DisambiguationResponse` with candidate list and recommendation
@@ -112,3 +113,27 @@ Briefs are rendered with `react-markdown` and `@tailwindcss/typography` classes.
 - Hint-aware strict mode runs extra quick searches (`name + hint + linkedin/portfolio`) and prioritizes candidates with hint-token matches.
 - Candidate extraction now runs in tiers: strict -> loose -> low-confidence fallback, to avoid dead-end `no_match` when profile snippets are imperfect.
 - Auto-`direct` now requires a single strong candidate (confidence >= 0.7). Single weak hits stay in `ambiguous` for user confirmation.
+
+### Frontend Build Maintenance
+
+- Added a direct frontend devDependency on `baseline-browser-mapping` so Next.js/Browserslist uses refreshed Baseline browser support data during compilation.
+- API structure is unchanged in this session:
+  - `GET /`
+  - `GET /api/health`
+  - `POST /api/research/disambiguate`
+  - `POST /api/research`
+  - `POST /api/research/stream`
+
+### Frontend Runtime Safety
+
+- `frontend/src/lib/api.ts` now resolves `NEXT_PUBLIC_API_URL` lazily inside request functions instead of at module load time.
+- This keeps configuration failures explicit while reducing client-module side effects during Fast Refresh and dev recompiles.
+
+### User-Provided Anthropic API Key
+
+- Backend: `get_anthropic_client(user_api_key)` creates a per-request Anthropic client. Falls back to `ANTHROPIC_API_KEY` env var if no user key is provided. Returns HTTP 400 if neither is available.
+- Backend: `ANTHROPIC_API_KEY` is no longer required at startup — the server can boot without it and rely on user-supplied keys.
+- Frontend: API key settings panel in the header (key icon). Key is stored in `localStorage` and passed in all API request bodies as `anthropic_api_key`.
+- Frontend: Settings copy explicitly states the key is stored locally and sent only to the PersonaPreparation backend when research is triggered.
+- Frontend: `api.ts` functions accept an optional `anthropicApiKey` parameter and include it in request payloads.
+- Security: The user key is stored only in the browser's `localStorage`, never sent to any third-party server. It is sent to the backend only as part of the research request body.

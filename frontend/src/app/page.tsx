@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ArrowRight, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowRight, Eye, EyeOff, KeyRound, Loader2, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,8 @@ import {
   type IdentityCandidate,
   type SelectedIdentity,
 } from "@/lib/api";
+
+const STORAGE_KEY = "persona_anthropic_api_key";
 
 const navItems = [
   { label: "Home", href: "#" },
@@ -42,10 +44,47 @@ export default function LandingPage() {
   const [candidates, setCandidates] = useState<IdentityCandidate[]>([]);
   const [candidateNote, setCandidateNote] = useState("");
 
+  // API key state
+  const [apiKey, setApiKey] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const [keySaved, setKeySaved] = useState(false);
+
+  // Load key from localStorage on mount
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      setApiKey(stored);
+      setKeySaved(true);
+    }
+  }, []);
+
+  const handleSaveKey = useCallback(() => {
+    const trimmed = apiKey.trim();
+    if (trimmed) {
+      localStorage.setItem(STORAGE_KEY, trimmed);
+      setApiKey(trimmed);
+      setKeySaved(true);
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+      setApiKey("");
+      setKeySaved(false);
+    }
+  }, [apiKey]);
+
+  const handleClearKey = useCallback(() => {
+    localStorage.removeItem(STORAGE_KEY);
+    setApiKey("");
+    setKeySaved(false);
+    setShowKey(false);
+  }, []);
+
   const formDisabled = useMemo(
     () => !personName || !context || isLoading,
     [personName, context, isLoading]
   );
+
+  const currentApiKey = apiKey.trim() || undefined;
 
   const startStreamingResearch = async (
     selectedIdentity?: SelectedIdentity,
@@ -100,7 +139,7 @@ export default function LandingPage() {
         setOutput(`Error: ${error}`);
         setIsLoading(false);
       },
-      { selectedIdentity, continueAnyway }
+      { selectedIdentity, continueAnyway, anthropicApiKey: currentApiKey }
     );
   };
 
@@ -114,7 +153,7 @@ export default function LandingPage() {
     setCurrentStatus("Checking identity...");
 
     try {
-      const disambiguation = await disambiguatePerson(personName, context);
+      const disambiguation = await disambiguatePerson(personName, context, currentApiKey);
 
       if (disambiguation.status === "ambiguous" && disambiguation.candidates.length > 0) {
         setCandidates(disambiguation.candidates);
@@ -187,6 +226,10 @@ export default function LandingPage() {
 
   const hasDisambiguationChoices = candidates.length > 0 || !!candidateNote;
 
+  const maskedKey = apiKey
+    ? `${apiKey.slice(0, 7)}${"*".repeat(Math.max(0, apiKey.length - 11))}${apiKey.slice(-4)}`
+    : "";
+
   return (
     <main className="relative isolate w-full overflow-hidden rounded-[32px] border border-[#d8d4c7] bg-gradient-to-b from-[#fdfcf8] to-[#f2efe8] shadow-soft">
       <div className="absolute inset-0 opacity-60" aria-hidden>
@@ -197,18 +240,137 @@ export default function LandingPage() {
           <div className="text-xl font-semibold tracking-[0.2em]">
             PersonaPreparation
           </div>
-          <nav className="flex gap-6 text-sm font-semibold uppercase tracking-[0.2em]">
-            {navItems.map((item) => (
-              <a
-                key={item.label}
-                href={item.href}
-                className="transition hover:text-black"
-              >
-                {item.label}
-              </a>
-            ))}
-          </nav>
+          <div className="flex items-center gap-6">
+            <nav className="flex gap-6 text-sm font-semibold uppercase tracking-[0.2em]">
+              {navItems.map((item) => (
+                <a
+                  key={item.label}
+                  href={item.href}
+                  className="transition hover:text-black"
+                >
+                  {item.label}
+                </a>
+              ))}
+            </nav>
+            <button
+              type="button"
+              onClick={() => setShowSettings((prev) => !prev)}
+              className={`group relative flex h-9 w-9 items-center justify-center rounded-full border transition-all duration-300 ${
+                showSettings
+                  ? "border-[#1c1915] bg-[#1c1915] text-[#f9f7f2]"
+                  : keySaved
+                    ? "border-emerald-400/60 bg-emerald-50 text-emerald-700 hover:border-emerald-500"
+                    : "border-[#d8d4c7] bg-white/80 text-[#7a7666] hover:border-[#1c1915]/40 hover:text-[#1c1915]"
+              }`}
+              aria-label="API Settings"
+            >
+              <KeyRound className="h-4 w-4" />
+              {keySaved && !showSettings && (
+                <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" />
+              )}
+            </button>
+          </div>
         </header>
+
+        {/* API Key Settings Panel */}
+        <div
+          className={`overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            showSettings ? "mb-8 max-h-[300px] opacity-100" : "max-h-0 opacity-0"
+          }`}
+        >
+          <div className="rounded-[24px] border border-[#c8b89a]/40 bg-gradient-to-br from-[#faf8f3] via-white to-[#f5f0e6] p-6 shadow-panel">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1c1915] to-[#3d3730] text-[#f9f7f2] shadow-md">
+                  <KeyRound className="h-4.5 w-4.5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold tracking-wide text-[#1c1915]">
+                    Anthropic API Key
+                  </h3>
+                  <p className="mt-0.5 text-xs text-[#7a7666]">
+                    Your key is stored locally in your browser and sent only to the PersonaPreparation backend when you run research.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSettings(false)}
+                className="flex h-7 w-7 items-center justify-center rounded-full text-[#7a7666] transition hover:bg-[#1c1915]/5 hover:text-[#1c1915]"
+                aria-label="Close settings"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-5 flex items-center gap-3">
+              <div className="relative flex-1">
+                <input
+                  type={showKey ? "text" : "password"}
+                  value={apiKey}
+                  onChange={(e) => {
+                    setApiKey(e.target.value);
+                    setKeySaved(false);
+                  }}
+                  placeholder="sk-ant-api03-..."
+                  className="h-11 w-full rounded-2xl border border-[#1a1814]/20 bg-white/90 pl-5 pr-12 font-mono text-sm text-[#1c1915] shadow-inner placeholder:text-[#a09b90] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1c1915]/15"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey((prev) => !prev)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1 text-[#7a7666] transition hover:text-[#1c1915]"
+                  aria-label={showKey ? "Hide key" : "Show key"}
+                >
+                  {showKey ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+
+              <Button
+                type="button"
+                onClick={handleSaveKey}
+                disabled={!apiKey.trim() || keySaved}
+                className="h-11 px-6"
+                size="sm"
+              >
+                {keySaved ? "Saved" : "Save"}
+              </Button>
+
+              {keySaved && (
+                <button
+                  type="button"
+                  onClick={handleClearKey}
+                  className="text-xs font-medium text-[#7a7666] underline decoration-[#7a7666]/30 underline-offset-2 transition hover:text-red-600 hover:decoration-red-400"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {keySaved && (
+              <div className="mt-3 flex items-center gap-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                <p className="text-xs font-medium text-emerald-700">
+                  Key active &mdash; {maskedKey}
+                </p>
+              </div>
+            )}
+
+            {!keySaved && !apiKey && (
+              <p className="mt-3 text-xs text-[#9a9589]">
+                Get your key from{" "}
+                <span className="font-medium text-[#5a574f]">
+                  console.anthropic.com
+                </span>
+              </p>
+            )}
+          </div>
+        </div>
 
         <section className="space-y-5 pb-10 text-center sm:text-left">
           <p className="text-sm uppercase tracking-[0.4em] text-[#7a7666]">

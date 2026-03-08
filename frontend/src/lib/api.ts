@@ -1,11 +1,14 @@
-const resolvedBaseUrl = process.env.NEXT_PUBLIC_API_URL;
 const API_ACCESS_TOKEN = process.env.NEXT_PUBLIC_API_ACCESS_TOKEN;
 
-if (!resolvedBaseUrl) {
-  throw new Error("NEXT_PUBLIC_API_URL is not configured. Set it to your backend URL.");
-}
+function getApiBaseUrl() {
+  const resolvedBaseUrl = process.env.NEXT_PUBLIC_API_URL;
 
-const API_BASE_URL = resolvedBaseUrl;
+  if (!resolvedBaseUrl) {
+    throw new Error("NEXT_PUBLIC_API_URL is not configured. Set it to your backend URL.");
+  }
+
+  return resolvedBaseUrl;
+}
 
 interface ResearchResponse {
   success: boolean;
@@ -47,19 +50,29 @@ export interface AgentEvent {
   iteration: number | null;
 }
 
-export async function generateBrief(personName: string, meetingContext: string) {
-  const headers: HeadersInit = {
-    "Content-Type": "application/json"
-  };
-
+function buildHeaders(): HeadersInit {
+  const headers: HeadersInit = { "Content-Type": "application/json" };
   if (API_ACCESS_TOKEN) {
     headers["X-API-Key"] = API_ACCESS_TOKEN;
   }
+  return headers;
+}
 
-  const response = await fetch(`${API_BASE_URL}/api/research`, {
+export async function generateBrief(
+  personName: string,
+  meetingContext: string,
+  anthropicApiKey?: string
+) {
+  const apiBaseUrl = getApiBaseUrl();
+
+  const response = await fetch(`${apiBaseUrl}/api/research`, {
     method: "POST",
-    headers,
-    body: JSON.stringify({ person_name: personName, meeting_context: meetingContext })
+    headers: buildHeaders(),
+    body: JSON.stringify({
+      person_name: personName,
+      meeting_context: meetingContext,
+      anthropic_api_key: anthropicApiKey || undefined,
+    })
   });
 
   if (!response.ok) {
@@ -77,20 +90,19 @@ export async function generateBrief(personName: string, meetingContext: string) 
 
 export async function disambiguatePerson(
   personName: string,
-  meetingContext: string
+  meetingContext: string,
+  anthropicApiKey?: string
 ): Promise<DisambiguationResponse> {
-  const headers: HeadersInit = {
-    "Content-Type": "application/json"
-  };
+  const apiBaseUrl = getApiBaseUrl();
 
-  if (API_ACCESS_TOKEN) {
-    headers["X-API-Key"] = API_ACCESS_TOKEN;
-  }
-
-  const response = await fetch(`${API_BASE_URL}/api/research/disambiguate`, {
+  const response = await fetch(`${apiBaseUrl}/api/research/disambiguate`, {
     method: "POST",
-    headers,
-    body: JSON.stringify({ person_name: personName, meeting_context: meetingContext })
+    headers: buildHeaders(),
+    body: JSON.stringify({
+      person_name: personName,
+      meeting_context: meetingContext,
+      anthropic_api_key: anthropicApiKey || undefined,
+    })
   });
 
   if (!response.ok) {
@@ -106,25 +118,24 @@ export async function generateBriefStream(
   onEvent: (event: AgentEvent) => void,
   onComplete: (brief: string) => void,
   onError: (error: string) => void,
-  options?: { selectedIdentity?: SelectedIdentity; continueAnyway?: boolean }
+  options?: {
+    selectedIdentity?: SelectedIdentity;
+    continueAnyway?: boolean;
+    anthropicApiKey?: string;
+  }
 ): Promise<void> {
   try {
-    const headers: HeadersInit = {
-      "Content-Type": "application/json"
-    };
+    const apiBaseUrl = getApiBaseUrl();
 
-    if (API_ACCESS_TOKEN) {
-      headers["X-API-Key"] = API_ACCESS_TOKEN;
-    }
-
-    const response = await fetch(`${API_BASE_URL}/api/research/stream`, {
+    const response = await fetch(`${apiBaseUrl}/api/research/stream`, {
       method: "POST",
-      headers,
+      headers: buildHeaders(),
       body: JSON.stringify({
         person_name: personName,
         meeting_context: meetingContext,
         selected_identity: options?.selectedIdentity,
-        continue_anyway: options?.continueAnyway || false
+        continue_anyway: options?.continueAnyway || false,
+        anthropic_api_key: options?.anthropicApiKey || undefined,
       })
     });
 
