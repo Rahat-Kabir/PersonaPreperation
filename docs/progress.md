@@ -1,5 +1,41 @@
 ﻿# Progress
 
+## 2026-03-11 - README rewrite around actual product flow
+
+### Decisions and implementation
+
+1. Rewrote `README.md` to match the implemented user journey instead of leading with a long feature list.
+   - Top of the README now states the real sequence: input -> identity check -> select person -> research -> final brief.
+   - Added a short `How It Works` section near the top.
+   - Added a `What You Get` section so output expectations are visible early.
+
+2. Simplified setup and configuration guidance.
+   - Separated required auth token setup from optional provider keys.
+   - Clarified that `ANTHROPIC_API_KEY` on the backend is optional when the user supplies a key from the frontend.
+   - Clarified that the current web UI requires meeting context even though the API treats it as optional.
+
+3. Simplified API documentation in the README.
+   - Documented the intended disambiguation-first API flow.
+   - Kept the current endpoint list without adding extra architecture detail to the top of the file.
+
+4. Added README regression coverage in `backend/scripts/test_readme_contract.py`.
+   - Verifies the README keeps the real product flow, setup rules, and API usage pattern visible.
+
+5. API structure review.
+   - No endpoint changes in this session.
+   - Current API remains:
+     - `GET /`
+     - `GET /api/health`
+     - `POST /api/research/disambiguate`
+     - `POST /api/research`
+     - `POST /api/research/stream`
+
+### Test coverage updates (`backend/scripts/`)
+
+1. Added `test_readme_contract.py` for top-level documentation regression coverage.
+2. Validation run for this change:
+   - `uv run python scripts/test_readme_contract.py`
+
 ## 2026-03-09 - Full UI/UX redesign (dark editorial theme)
 
 ### Decisions and implementation

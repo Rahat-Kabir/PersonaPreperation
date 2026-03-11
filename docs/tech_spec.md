@@ -1,4 +1,28 @@
-﻿# Technical Specification
+# Technical Specification
+
+## Documentation Decisions
+
+- `README.md` now starts with the implemented product flow instead of a long features-first introduction.
+- The README now explains the end-user sequence clearly:
+  1. enter person name and meeting context
+  2. run identity disambiguation
+  3. select the right person or continue anyway
+  4. run deep research with live progress
+  5. return the final meeting brief
+- The README now separates required configuration from optional provider keys.
+- The README now states that the current web UI requires meeting context, while the API still treats `meeting_context` as optional.
+- The README now documents the intended API path: disambiguate first, then call deep research with `selected_identity` or `continue_anyway=true`.
+- Added `backend/scripts/test_readme_contract.py` to keep the README aligned with the implemented product flow and setup rules.
+
+### API Structure Review
+
+- No API endpoints changed in this session.
+- Current API remains:
+  - `GET /`
+  - `GET /api/health`
+  - `POST /api/research/disambiguate`
+  - `POST /api/research`
+  - `POST /api/research/stream`
 
 ## Backend Architecture
 
@@ -102,10 +126,10 @@ frontend/src/
 
 ### 4-State App Architecture
 
-1. **Input** — centered form with hero text, person name + context inputs
-2. **Disambiguation** — radio-select candidate list with confirm/skip actions
-3. **Researching** — SVG progress ring (iteration/15) + live monospace activity feed
-4. **Result** — full-viewport markdown dossier with copy/new-research actions
+1. **Input** - centered form with hero text, person name + context inputs
+2. **Disambiguation** - radio-select candidate list with confirm/skip actions
+3. **Researching** - SVG progress ring (iteration/15) + live monospace activity feed
+4. **Result** - full-viewport markdown dossier with copy/new-research actions
 
 ### Frontend Regression Checks
 
@@ -155,7 +179,7 @@ Briefs are rendered with `react-markdown` and custom `prose-dossier` styles (dar
 ### User-Provided Anthropic API Key
 
 - Backend: `get_anthropic_client(user_api_key)` creates a per-request Anthropic client. Falls back to `ANTHROPIC_API_KEY` env var if no user key is provided. Returns HTTP 400 if neither is available.
-- Backend: `ANTHROPIC_API_KEY` is no longer required at startup — the server can boot without it and rely on user-supplied keys.
+- Backend: `ANTHROPIC_API_KEY` is no longer required at startup - the server can boot without it and rely on user-supplied keys.
 - Frontend: API key settings panel in the header (key icon). Key is stored in `localStorage` and passed in all API request bodies as `anthropic_api_key`.
 - Frontend: Settings copy explicitly states the key is stored locally and sent only to the PersonaPreparation backend when research is triggered.
 - Frontend: `api.ts` functions accept an optional `anthropicApiKey` parameter and include it in request payloads.
