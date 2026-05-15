@@ -77,6 +77,12 @@ class HealthResponse(BaseModel):
     timestamp: str = Field(..., description="Current timestamp")
 
 
+class ExportPDFRequest(BaseModel):
+    """Request model for PDF brief export."""
+    brief: str = Field(..., description="Markdown brief content to export as PDF")
+    person_name: str = Field(..., max_length=200, description="Person name used as the PDF document title")
+
+
 class AgentEvent(BaseModel):
     """Server-Sent Event model for real-time agent updates."""
     event_type: Literal["start", "tool_call", "tool_result", "thinking", "complete", "error"] = Field(

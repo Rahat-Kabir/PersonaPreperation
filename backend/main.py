@@ -4,18 +4,22 @@ Provides HTTP endpoints for the research agent functionality.
 """
 
 import asyncio
+import io
 import os
 import logging
+import re
 import time
 from collections import defaultdict, deque
 from datetime import datetime
 from typing import Optional
 
+import markdown as md_lib
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from anthropic import Anthropic
+from weasyprint import HTML as WeasyprintHTML
 import json
 
 from models import (
@@ -24,10 +28,12 @@ from models import (
     HealthResponse,
     AgentEvent,
     DisambiguationResponse,
+    ExportPDFRequest,
 )
 from agent import research_person_with_tools, research_person_with_tools_stream, disambiguate_person_name
 from tools import ToolExecutor
 from utils import validate_person_name
+from config import PDF_HTML_TEMPLATE
 
 # Load environment variables
 load_dotenv()
@@ -147,6 +153,7 @@ async def root():
             "research": "/api/research (POST)",
             "research_stream": "/api/research/stream (POST)",
             "disambiguate": "/api/research/disambiguate (POST)",
+            "export_pdf": "/api/export/pdf (POST)",
         }
     }
 
@@ -376,6 +383,42 @@ async def research_person_disambiguate(
         meeting_context=request.meeting_context or "",
     )
     return DisambiguationResponse(**result)
+
+
+@app.post("/api/export/pdf")
+async def export_brief_pdf(
+    request: ExportPDFRequest,
+    _: None = Depends(verify_api_key),
+    __: None = Depends(enforce_rate_limit),
+):
+    """Convert a markdown meeting brief to a downloadable PDF."""
+    logger.info("PDF export request received.")
+    try:
+        html_body = md_lib.markdown(request.brief, extensions=["extra"])
+        html = PDF_HTML_TEMPLATE.format(
+            person_name=request.person_name,
+            date=datetime.now().strftime("%B %d, %Y"),
+            content=html_body,
+        )
+
+        loop = asyncio.get_event_loop()
+        pdf_bytes = await loop.run_in_executor(
+            None,
+            lambda: WeasyprintHTML(string=html).write_pdf(),
+        )
+
+        safe_name = re.sub(r"[^\w\s-]", "", request.person_name).strip().replace(" ", "-")
+        filename = f"{safe_name}-brief.pdf"
+
+        logger.info(f"PDF generated: {filename}")
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as e:
+        logger.error(f"PDF export failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
 
 
 if __name__ == "__main__":

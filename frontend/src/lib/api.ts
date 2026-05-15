@@ -58,6 +58,23 @@ function buildHeaders(): HeadersInit {
   return headers;
 }
 
+export async function exportBriefPDF(brief: string, personName: string): Promise<Blob> {
+  const apiBaseUrl = getApiBaseUrl();
+
+  const response = await fetch(`${apiBaseUrl}/api/export/pdf`, {
+    method: "POST",
+    headers: buildHeaders(),
+    body: JSON.stringify({ brief, person_name: personName }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Unable to generate PDF. Please try again.");
+  }
+
+  return response.blob();
+}
+
+
 export async function generateBrief(
   personName: string,
   meetingContext: string,
