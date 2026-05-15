@@ -13,6 +13,7 @@ import requests
 from tavily import TavilyClient
 from firecrawl import FirecrawlApp
 
+import cache
 from config import (
     BRAVE_TIMEOUT,
     DEFAULT_RETRY_DELAY,
@@ -22,6 +23,28 @@ from config import (
     MAX_SEARCH_RESULTS,
     TAVILY_TIMEOUT,
 )
+
+
+_TOOL_CACHE_TTL = {
+    "tavily_search": cache.TOOL_SEARCH_TTL,
+    "brave_search": cache.TOOL_SEARCH_TTL,
+    "firecrawl_scrape": cache.TOOL_SCRAPE_TTL,
+}
+
+
+def _normalize_tool_input(tool_input: Dict[str, Any]) -> Dict[str, Any]:
+    """Canonicalize tool input so trivial variations hit the same cache key.
+
+    Lowercases + strips whitespace on the human-typed fields (`query`, `url`).
+    Leaves numeric/option fields alone so different result counts cache separately.
+    """
+    normalized: Dict[str, Any] = {}
+    for key, value in tool_input.items():
+        if key in {"query", "url"} and isinstance(value, str):
+            normalized[key] = re.sub(r"\s+", " ", value).strip().lower()
+        else:
+            normalized[key] = value
+    return normalized
 
 logger = logging.getLogger("persona_preparation")
 
@@ -295,31 +318,60 @@ class ToolExecutor:
             logger.error(f"Firecrawl scrape error: {e}")
             return {"error": f"Firecrawl scrape failed: {str(e)}"}
 
-    async def execute_tool(self, tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_tool(
+        self,
+        tool_name: str,
+        tool_input: Dict[str, Any],
+        cache_bypass: bool = False,
+    ) -> Dict[str, Any]:
         """Execute a tool by name with timeout protection.
 
         Runs sync tool calls in a thread to avoid blocking the event loop,
-        and applies per-tool timeouts.
+        applies per-tool timeouts, and serves successful results from the
+        SQLite cache when present. Errors are never cached.
+
+        Args:
+            tool_name: One of tavily_search | brave_search | firecrawl_scrape.
+            tool_input: Tool-specific kwargs.
+            cache_bypass: When True, skip the cache lookup and overwrite any
+                existing entry with the fresh result. Used by force_refresh.
         """
+        cache_ttl = _TOOL_CACHE_TTL.get(tool_name)
+        cache_key: Optional[str] = None
+        if cache_ttl is not None:
+            cache_key = cache.build_key(
+                f"tool:{tool_name}",
+                _normalize_tool_input(tool_input),
+            )
+            if not cache_bypass:
+                cached = cache.get(cache_key)
+                if cached is not None:
+                    logger.info("Cache HIT for tool %s", tool_name)
+                    return cached
+
         for attempt in range(2):
             try:
                 if tool_name == "tavily_search":
-                    return await asyncio.wait_for(
+                    result = await asyncio.wait_for(
                         asyncio.to_thread(self.tavily_search, **tool_input),
                         timeout=TAVILY_TIMEOUT
                     )
                 elif tool_name == "brave_search":
-                    return await asyncio.wait_for(
+                    result = await asyncio.wait_for(
                         asyncio.to_thread(self.brave_search, **tool_input),
                         timeout=BRAVE_TIMEOUT
                     )
                 elif tool_name == "firecrawl_scrape":
-                    return await asyncio.wait_for(
+                    result = await asyncio.wait_for(
                         asyncio.to_thread(self.firecrawl_scrape, **tool_input),
                         timeout=FIRECRAWL_TIMEOUT
                     )
                 else:
                     return {"error": f"Unknown tool: {tool_name}"}
+
+                if cache_key and cache_ttl and "error" not in result:
+                    cache.set(cache_key, result, cache_ttl)
+                return result
             except asyncio.TimeoutError:
                 logger.error("Tool %s timed out (attempt %s)", tool_name, attempt + 1)
                 if attempt == 0:
@@ -332,3 +384,5 @@ class ToolExecutor:
                     await asyncio.sleep(DEFAULT_RETRY_DELAY)
                     continue
                 return {"error": f"{tool_name} network error: {str(e)}"}
+
+        return {"error": f"{tool_name} failed after retries"}

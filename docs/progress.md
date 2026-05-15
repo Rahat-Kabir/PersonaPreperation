@@ -1,5 +1,42 @@
 ﻿# Progress
 
+## 2026-05-15 - SQLite cache for tool results and briefs
+
+### Decisions and implementation
+
+1. Added `backend/cache.py` — SQLite-backed key-value cache with TTLs (search 7d, scrape 15d, brief 15d). WAL mode, per-call connection (asyncio-safe), JSON values, sha256 keys.
+
+2. Wired the cache through every tool path.
+   - `tools.execute_tool(..., cache_bypass=False)` checks the cache first, runs the underlying call on miss, and persists successful results (errors are never cached).
+   - `_normalize_tool_input` lowercases and collapses whitespace on `query`/`url` only so trivial variations share an entry; `max_results`-style options are kept verbatim.
+
+3. Wired the cache through the agent loop.
+   - `_brief_cache_key` includes `BRIEF_CACHE_VERSION`, model name, 12-char system-prompt SHA-256 prefix, normalized name + context, selected identity (profile_url with name+title+organization fallback), and `continue_anyway`. A prompt or model change naturally invalidates every prior brief; bump the version constant for a manual reset.
+   - Briefs are only persisted on `stop_reason == "end_turn"`. Cache hits emit `start` + `complete` SSE events with `from_cache: true` for streaming clients.
+   - `force_refresh` flows through `disambiguate_person_name`, both research wrappers, and every `execute_tool` call.
+
+4. Surfaced the bypass to all entry points.
+   - `ResearchRequest.force_refresh` (default False) plumbed through `/api/research`, `/api/research/stream`, `/api/research/disambiguate`.
+   - Frontend: `disambiguatePerson(forceRefresh)` + `generateBriefStream({forceRefresh})` + a "Force fresh research" checkbox under the submit button (resets on New).
+   - CLI gained `--force-refresh` (alias `--no-cache`) and now calls `cache.init_db()` at startup so terminal runs persist and read from the same DB.
+
+5. Test isolation.
+   - `test_agent.py` and `test_cache.py` set `CACHE_DB_PATH` to a temp file before importing `cache`/`agent` and call `cache.clear_all()` between tests so one mocked run cannot poison the next.
+   - `MockDisambiguationExecutor.execute_tool` updated to accept `cache_bypass=False` to match the new `ToolExecutor` signature.
+
+6. `.gitignore` now excludes `backend/cache.db*` (db, journal, wal, shm).
+
+### Validation
+
+1. Validation run:
+   - `uv run python scripts/test_cache.py` — 21/21
+   - `uv run python scripts/test_agent.py` — 58/58
+   - `uv run python scripts/test_tools.py` — 21/21
+   - `uv run python scripts/test_disambiguation.py` — 20/20
+   - `uv run python scripts/test_models.py` — 9/9
+   - `uv run python scripts/test_pdf_export.py` — green
+   - Manual: two consecutive web requests for the same person/context show an instant second response with `from_cache: true`; checking the "Force fresh research" box re-runs the full agent loop.
+
 ## 2026-05-15 - PDF export import regression fix
 
 ### Decisions and implementation

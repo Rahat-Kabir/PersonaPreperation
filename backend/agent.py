@@ -6,6 +6,7 @@ the streaming (SSE) and non-streaming (REST) interfaces.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import re
@@ -15,6 +16,7 @@ from urllib.parse import urlparse
 
 from anthropic import Anthropic, APIError, APIConnectionError, RateLimitError
 
+import cache
 from config import (
     ANTHROPIC_TIMEOUT,
     DEFAULT_MAX_TOKENS,
@@ -27,6 +29,40 @@ from config import (
 )
 from tools import ToolExecutor
 from utils import validate_person_name
+
+
+_PROMPT_HASH = hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest()[:12]
+
+
+def _brief_cache_key(
+    person_name: str,
+    meeting_context: str,
+    selected_identity: Optional[Dict[str, Any]],
+    continue_anyway: bool,
+) -> str:
+    """Build a stable cache key for a final brief.
+
+    Includes the selected identity (profile_url with title/org+name fallback)
+    so distinct candidates can't collide. Includes the model name and a hash
+    of the system prompt so a prompt or model change naturally invalidates
+    every prior brief; bump cache.BRIEF_CACHE_VERSION for a manual reset.
+    """
+    identity_token = ""
+    if selected_identity:
+        identity_token = "|".join(
+            (selected_identity.get(field) or "").strip().lower()
+            for field in ("profile_url", "name", "title", "organization")
+        )
+    payload = {
+        "v": cache.BRIEF_CACHE_VERSION,
+        "model": DEFAULT_MODEL,
+        "prompt": _PROMPT_HASH,
+        "name": re.sub(r"\s+", " ", (person_name or "")).strip().lower(),
+        "context": re.sub(r"\s+", " ", (meeting_context or "")).strip().lower(),
+        "identity": identity_token,
+        "continue_anyway": bool(continue_anyway),
+    }
+    return cache.build_key("brief", payload)
 
 logger = logging.getLogger("persona_preparation")
 
@@ -402,6 +438,7 @@ async def disambiguate_person_name(
     person_name: str,
     meeting_context: str = "",
     max_candidates: int = 7,
+    force_refresh: bool = False,
 ) -> Dict[str, Any]:
     """Run a cheap, quick search pass to detect identity ambiguity.
 
@@ -422,9 +459,9 @@ async def disambiguate_person_name(
 
     # Assemble the task list — always include the three base queries
     tasks = [
-        tool_executor.execute_tool("tavily_search", {"query": identity_query, "max_results": 6}),
-        tool_executor.execute_tool("tavily_search", {"query": linkedin_query, "max_results": 4}),
-        tool_executor.execute_tool("tavily_search", {"query": public_profile_query, "max_results": 4}),
+        tool_executor.execute_tool("tavily_search", {"query": identity_query, "max_results": 6}, cache_bypass=force_refresh),
+        tool_executor.execute_tool("tavily_search", {"query": linkedin_query, "max_results": 4}, cache_bypass=force_refresh),
+        tool_executor.execute_tool("tavily_search", {"query": public_profile_query, "max_results": 4}, cache_bypass=force_refresh),
     ]
 
     if merged_context:
@@ -432,20 +469,20 @@ async def disambiguate_person_name(
         alternate_query = f'"{identity_subject}" {merged_context} portfolio website'.strip()
 
         tasks += [
-            tool_executor.execute_tool("tavily_search", {"query": context_query, "max_results": 6}),
-            tool_executor.execute_tool("brave_search", {"query": context_query, "count": 6, "freshness": "py"}),
-            tool_executor.execute_tool("tavily_search", {"query": alternate_query, "max_results": 4}),
+            tool_executor.execute_tool("tavily_search", {"query": context_query, "max_results": 6}, cache_bypass=force_refresh),
+            tool_executor.execute_tool("brave_search", {"query": context_query, "count": 6, "freshness": "py"}, cache_bypass=force_refresh),
+            tool_executor.execute_tool("tavily_search", {"query": alternate_query, "max_results": 4}, cache_bypass=force_refresh),
         ]
 
         # Academic-specific queries: ResearchGate, university pages, etc.
         if hint_class["academic"]:
             academic_query = f'"{identity_subject}" {merged_context} researchgate academia profile'
-            tasks.append(tool_executor.execute_tool("tavily_search", {"query": academic_query, "max_results": 4}))
+            tasks.append(tool_executor.execute_tool("tavily_search", {"query": academic_query, "max_results": 4}, cache_bypass=force_refresh))
 
         # Professional-specific queries: company pages, Crunchbase, etc.
         if hint_class["professional"]:
             professional_query = f'"{identity_subject}" {merged_context} company executive profile'
-            tasks.append(tool_executor.execute_tool("tavily_search", {"query": professional_query, "max_results": 4}))
+            tasks.append(tool_executor.execute_tool("tavily_search", {"query": professional_query, "max_results": 4}, cache_bypass=force_refresh))
 
     # --- Run all queries in parallel ---
     search_results: list[Dict[str, Any]] = []
@@ -510,7 +547,7 @@ async def disambiguate_person_name(
         # Last-resort: broaden search using only the base name (drop hints entirely)
         # to handle cases where the right result exists but didn't match hint tokens.
         broad_query = f'"{identity_subject}" profile'
-        broad_result = await tool_executor.execute_tool("tavily_search", {"query": broad_query, "max_results": 6})
+        broad_result = await tool_executor.execute_tool("tavily_search", {"query": broad_query, "max_results": 6}, cache_bypass=force_refresh)
         if "error" not in broad_result:
             for result in broad_result.get("results", []):
                 candidate = _extract_fallback_candidate_from_result(result, person_name, identity_subject)
@@ -666,6 +703,7 @@ async def _run_agent_loop(
     on_event: EventCallback,
     selected_identity: Optional[Dict[str, Any]] = None,
     continue_anyway: bool = False,
+    force_refresh: bool = False,
 ) -> Optional[str]:
     """Core agentic loop shared by streaming and non-streaming callers.
 
@@ -675,6 +713,9 @@ async def _run_agent_loop(
         person_name: Person to research.
         meeting_context: Optional meeting context.
         on_event: Async callback invoked for every agent event.
+        selected_identity: Optional identity anchor selected by the user.
+        continue_anyway: Run deep research even when disambiguation was unclear.
+        force_refresh: Bypass both the brief cache and per-tool cache layers.
 
     Returns:
         The final brief text, or None on failure.
@@ -685,6 +726,20 @@ async def _run_agent_loop(
         logger.error("Invalid person name supplied: %s", error_msg)
         await on_event(_make_event("error", {"error": error_msg}))
         return None
+
+    brief_key = _brief_cache_key(person_name, meeting_context, selected_identity, continue_anyway)
+    if not force_refresh:
+        cached_brief = cache.get(brief_key)
+        if isinstance(cached_brief, str) and cached_brief.strip():
+            logger.info("Brief cache HIT for %s", person_name)
+            await on_event(_make_event("start", {"person_name": person_name, "context": meeting_context}))
+            await on_event(_make_event("complete", {
+                "brief": cached_brief,
+                "person_name": person_name,
+                "iteration_count": 0,
+                "from_cache": True,
+            }))
+            return cached_brief
 
     user_prompt = _build_user_prompt(person_name, meeting_context, selected_identity, continue_anyway)
 
@@ -755,7 +810,7 @@ async def _run_agent_loop(
                         ))
 
                         logger.info("Executing tool call: %s", tool_name)
-                        result = await tool_executor.execute_tool(tool_name, tool_input)
+                        result = await tool_executor.execute_tool(tool_name, tool_input, cache_bypass=force_refresh)
 
                         if "error" not in result:
                             if tool_name in ("tavily_search", "brave_search"):
@@ -854,10 +909,12 @@ async def _run_agent_loop(
 
     if final_response:
         logger.info("Research completed successfully.")
+        cache.set(brief_key, final_response, cache.BRIEF_TTL)
         await on_event(_make_event("complete", {
             "brief": final_response,
             "person_name": person_name,
             "iteration_count": iteration,
+            "from_cache": False,
         }, iteration))
     else:
         await on_event(_make_event("error", {"error": "Failed to generate brief"}, iteration))
@@ -876,6 +933,7 @@ async def research_person_with_tools_stream(
     meeting_context: str = "",
     selected_identity: Optional[Dict[str, Any]] = None,
     continue_anyway: bool = False,
+    force_refresh: bool = False,
 ):
     """Async generator that yields agent events for SSE streaming.
 
@@ -897,6 +955,7 @@ async def research_person_with_tools_stream(
                 _push_event,
                 selected_identity=selected_identity,
                 continue_anyway=continue_anyway,
+                force_refresh=force_refresh,
             )
         finally:
             await queue.put(None)  # sentinel
@@ -919,6 +978,7 @@ async def research_person_with_tools(
     meeting_context: str = "",
     selected_identity: Optional[Dict[str, Any]] = None,
     continue_anyway: bool = False,
+    force_refresh: bool = False,
 ) -> Optional[str]:
     """Non-streaming research — returns the final brief or None."""
 
@@ -933,4 +993,5 @@ async def research_person_with_tools(
         _noop,
         selected_identity=selected_identity,
         continue_anyway=continue_anyway,
+        force_refresh=force_refresh,
     )

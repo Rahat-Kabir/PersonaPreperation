@@ -104,6 +104,7 @@ export default function LandingPage() {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [pdfDownloading, setPdfDownloading] = useState(false);
+  const [forceRefresh, setForceRefresh] = useState(false);
 
   // API key state
   const [apiKey, setApiKey] = useState("");
@@ -213,7 +214,7 @@ export default function LandingPage() {
         setIsLoading(false);
         setAppState("result");
       },
-      { selectedIdentity, continueAnyway, anthropicApiKey: currentApiKey }
+      { selectedIdentity, continueAnyway, anthropicApiKey: currentApiKey, forceRefresh }
     );
   };
 
@@ -228,7 +229,7 @@ export default function LandingPage() {
     setCurrentStatus("Checking identity...");
 
     try {
-      const disambiguation = await disambiguatePerson(personName, context, currentApiKey);
+      const disambiguation = await disambiguatePerson(personName, context, currentApiKey, forceRefresh);
 
       if (disambiguation.status === "ambiguous" && disambiguation.candidates.length > 0) {
         setCandidates(disambiguation.candidates);
@@ -312,6 +313,7 @@ export default function LandingPage() {
     setCurrentIteration(0);
     setSelectedCandidateId(null);
     setCopied(false);
+    setForceRefresh(false);
   };
 
   const handleCopy = async () => {
@@ -529,6 +531,15 @@ export default function LandingPage() {
                 </>
               )}
             </Button>
+            <label className="flex cursor-pointer items-center justify-center gap-2 text-xs text-[var(--text-tertiary)] transition hover:text-[var(--text-secondary)]">
+              <input
+                type="checkbox"
+                checked={forceRefresh}
+                onChange={(e) => setForceRefresh(e.target.checked)}
+                className="h-3.5 w-3.5 cursor-pointer accent-[var(--accent)]"
+              />
+              Force fresh research (skip cache)
+            </label>
             <p className="text-center text-xs text-[var(--text-tertiary)]">
               Scans trusted public sources only. No private data or inboxes.
             </p>

@@ -127,7 +127,8 @@ export async function generateBrief(
 export async function disambiguatePerson(
   personName: string,
   meetingContext: string,
-  anthropicApiKey?: string
+  anthropicApiKey?: string,
+  forceRefresh = false
 ): Promise<DisambiguationResponse> {
   const apiBaseUrl = getApiBaseUrl();
 
@@ -138,6 +139,7 @@ export async function disambiguatePerson(
       person_name: personName,
       meeting_context: meetingContext,
       anthropic_api_key: anthropicApiKey || undefined,
+      force_refresh: forceRefresh,
     })
   });
 
@@ -158,6 +160,7 @@ export async function generateBriefStream(
     selectedIdentity?: SelectedIdentity;
     continueAnyway?: boolean;
     anthropicApiKey?: string;
+    forceRefresh?: boolean;
   }
 ): Promise<void> {
   try {
@@ -172,6 +175,7 @@ export async function generateBriefStream(
         selected_identity: options?.selectedIdentity,
         continue_anyway: options?.continueAnyway || false,
         anthropic_api_key: options?.anthropicApiKey || undefined,
+        force_refresh: options?.forceRefresh || false,
       })
     });
 

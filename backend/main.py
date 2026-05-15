@@ -36,6 +36,7 @@ from agent import research_person_with_tools, research_person_with_tools_stream,
 from tools import ToolExecutor
 from utils import validate_person_name
 from config import PDF_HTML_TEMPLATE
+import cache
 
 # Load environment variables
 load_dotenv()
@@ -140,6 +141,10 @@ async def startup_event():
     # Initialize tool executor
     tool_executor = ToolExecutor()
 
+    # Initialize cache (idempotent)
+    cache.init_db()
+    logger.info("Cache database initialized.")
+
     logger.info("API initialized successfully")
 
 
@@ -206,6 +211,7 @@ async def research_person(
                 tool_executor=tool_executor,
                 person_name=request.person_name,
                 meeting_context=request.meeting_context or "",
+                force_refresh=request.force_refresh,
             )
             status = disambiguation["status"]
             if status in ("ambiguous", "no_match") and not request.continue_anyway:
@@ -233,6 +239,7 @@ async def research_person(
             meeting_context=request.meeting_context or "",
             selected_identity=selected_identity_dict,
             continue_anyway=request.continue_anyway,
+            force_refresh=request.force_refresh,
         )
 
         if brief:
@@ -301,6 +308,7 @@ async def research_person_stream(
             tool_executor=tool_executor,
             person_name=request.person_name,
             meeting_context=request.meeting_context or "",
+            force_refresh=request.force_refresh,
         )
         status = disambiguation["status"]
         if status in ("ambiguous", "no_match") and not request.continue_anyway:
@@ -328,6 +336,7 @@ async def research_person_stream(
                 meeting_context=request.meeting_context or "",
                 selected_identity=selected_identity_dict,
                 continue_anyway=request.continue_anyway,
+                force_refresh=request.force_refresh,
             ):
                 # Validate event with Pydantic model
                 event = AgentEvent(**event_dict)
@@ -383,6 +392,7 @@ async def research_person_disambiguate(
         tool_executor=tool_executor,
         person_name=request.person_name,
         meeting_context=request.meeting_context or "",
+        force_refresh=request.force_refresh,
     )
     return DisambiguationResponse(**result)
 

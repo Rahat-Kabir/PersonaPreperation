@@ -3,11 +3,22 @@
 
 import asyncio
 import json
+import os
 import sys
+import tempfile
 from unittest.mock import MagicMock, AsyncMock
 from types import SimpleNamespace
 
 sys.path.insert(0, sys.path[0] + "/..")
+
+# Isolate the cache from the real backend/cache.db. Must be set BEFORE
+# importing `agent`, which imports `cache` at module load time.
+_TMP_DB = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+_TMP_DB.close()
+os.environ["CACHE_DB_PATH"] = _TMP_DB.name
+
+import cache  # noqa: E402
+cache.init_db()
 
 from agent import (
     _build_query_plan,
@@ -127,6 +138,7 @@ def make_mock_tool_executor():
 
 
 async def test_agent_loop_end_turn():
+    cache.clear_all()
     client = make_mock_client_end_turn("Test brief output")
     executor = make_mock_tool_executor()
     events = []
@@ -174,6 +186,7 @@ def make_mock_client_with_tool():
 
 
 async def test_agent_loop_with_tool():
+    cache.clear_all()
     client = make_mock_client_with_tool()
     executor = make_mock_tool_executor()
     events = []
@@ -228,6 +241,7 @@ def make_mock_client_with_duplicate_tool_calls():
 
 
 async def test_duplicate_skip():
+    cache.clear_all()
     client = make_mock_client_with_duplicate_tool_calls()
     executor = make_mock_tool_executor()
     events = []
@@ -263,6 +277,7 @@ def make_mock_client_max_tokens_then_end():
 
 
 async def test_max_tokens_continuation():
+    cache.clear_all()
     client = make_mock_client_max_tokens_then_end()
     executor = make_mock_tool_executor()
     events = []
@@ -302,6 +317,7 @@ print("\n-- research_person_with_tools (non-streaming) --")
 
 
 async def test_non_streaming():
+    cache.clear_all()
     client = make_mock_client_end_turn("Non-streaming brief")
     executor = make_mock_tool_executor()
 
@@ -317,6 +333,7 @@ print("\n-- research_person_with_tools_stream (streaming) --")
 
 
 async def test_streaming():
+    cache.clear_all()
     client = make_mock_client_end_turn("Streaming brief")
     executor = make_mock_tool_executor()
 
@@ -342,7 +359,7 @@ class MockDisambiguationExecutor:
     def __init__(self, tavily_results):
         self._tavily_results = tavily_results
 
-    async def execute_tool(self, tool_name, tool_input):
+    async def execute_tool(self, tool_name, tool_input, cache_bypass=False):
         if tool_name == "tavily_search":
             return {"results": self._tavily_results, "count": len(self._tavily_results)}
         if tool_name == "brave_search":
@@ -418,6 +435,12 @@ async def test_disambiguation_statuses():
 
 
 asyncio.run(test_disambiguation_statuses())
+
+cache.clear_all()
+try:
+    os.unlink(_TMP_DB.name)
+except OSError:
+    pass
 
 print(f"\n{'=' * 40}")
 print(f"Results: {passed} passed, {failed} failed")

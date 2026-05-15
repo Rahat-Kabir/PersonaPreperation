@@ -1,18 +1,30 @@
 #!/usr/bin/env python3
 """CLI entry point for PersonaPreparation — research people from the terminal."""
 
+import argparse
 import asyncio
 import os
 
 from dotenv import load_dotenv
 from anthropic import Anthropic
 
+import cache
 from agent import research_person_with_tools
 from tools import ToolExecutor
 from utils import save_brief_to_file
 
 
 async def main() -> None:
+    parser = argparse.ArgumentParser(description="PersonaPreparation CLI")
+    parser.add_argument(
+        "--force-refresh",
+        "--no-cache",
+        dest="force_refresh",
+        action="store_true",
+        help="Bypass the cache and re-run searches + agent loop from scratch.",
+    )
+    args = parser.parse_args()
+
     load_dotenv()
 
     api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -20,6 +32,8 @@ async def main() -> None:
         print("\nERROR: Missing or invalid ANTHROPIC_API_KEY in .env")
         print("Get your key from: https://console.anthropic.com/")
         return
+
+    cache.init_db()
 
     client = Anthropic(api_key=api_key)
     tool_executor = ToolExecutor()
@@ -54,7 +68,11 @@ async def main() -> None:
 
             print(f"\nResearching {person_name}...\n")
             brief = await research_person_with_tools(
-                client, tool_executor, person_name, meeting_context
+                client,
+                tool_executor,
+                person_name,
+                meeting_context,
+                force_refresh=args.force_refresh,
             )
 
             if brief:

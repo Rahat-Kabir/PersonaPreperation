@@ -27,6 +27,12 @@ briefs/
 logs/
 *.log
 
+# SQLite cache (tool results + briefs)
+backend/cache.db
+backend/cache.db-journal
+backend/cache.db-wal
+backend/cache.db-shm
+
 # IDE
 .vscode/
 .idea/

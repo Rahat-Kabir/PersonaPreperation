@@ -1,5 +1,17 @@
 # Technical Specification
 
+## Caching Layer
+
+- Tool results (Tavily, Brave, Firecrawl) and final agent briefs are cached in a single SQLite file at `backend/cache.db` (WAL mode, per-call connection). See `backend/cache.py`.
+- TTLs: search 7 days, scrape 15 days, brief 15 days.
+- Tool keys hash a normalized payload — `query`/`url` are lowercased and whitespace-collapsed so trivial variations share an entry; numeric/option fields are kept verbatim so different `max_results` values cache separately.
+- Brief keys include `BRIEF_CACHE_VERSION`, the model name, a 12-char SHA-256 prefix of the system prompt, the normalized name + context, the selected identity (profile_url, falling back to name+title+organization), and `continue_anyway`. Editing the system prompt or bumping `DEFAULT_MODEL` therefore invalidates every prior brief automatically; bump `BRIEF_CACHE_VERSION` for a manual reset.
+- Errors are never cached. The brief is only persisted when the agent finishes with `stop_reason == "end_turn"`.
+- `force_refresh` (request flag, frontend checkbox, CLI `--force-refresh` / `--no-cache`) bypasses both the brief cache and per-tool cache and overwrites stale entries with fresh results.
+- `cache.init_db()` is invoked from both `main.py` (FastAPI startup) and `cli.py` (start of `main()`) so the table exists in both entry points.
+- Test isolation: agent and cache test scripts set `CACHE_DB_PATH` to a temp file before importing `cache`, and call `cache.clear_all()` between tests so one mocked run cannot poison the next.
+- Privacy note: briefs are stored plaintext and keyed by request content (name + context + identity), not by user or API key. This is acceptable for the current local single-user deployment but must be re-scoped (per-user namespacing or encryption-at-rest) before any multi-tenant hosting.
+
 ## Documentation Decisions
 
 - PDF export is exposed as `POST /api/export/pdf`; it returns JSON with base64 PDF data so browser-side downloads do not require a second authenticated file request. Its regression script imports `backend/main.py` and verifies the route is registered so syntax/import issues block the PDF test.

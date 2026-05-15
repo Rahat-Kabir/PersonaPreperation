@@ -42,6 +42,10 @@ class ResearchRequest(BaseModel):
         default=False,
         description="If true, continue deep research even when disambiguation is ambiguous or no-match",
     )
+    force_refresh: bool = Field(
+        default=False,
+        description="If true, bypass the cache and re-run searches + agent loop from scratch.",
+    )
     anthropic_api_key: Optional[str] = Field(
         None,
         description="User-provided Anthropic API key. If set, overrides the server default.",
