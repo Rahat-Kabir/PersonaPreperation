@@ -16,6 +16,9 @@ import {
   Brain,
   X,
   ChevronLeft,
+  Clock,
+  Trash2,
+  RefreshCw,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -24,17 +27,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  deleteHistoryItem,
   disambiguatePerson,
   exportBriefPDF,
   generateBriefStream,
+  getHistory,
+  getHistoryItem,
   type AgentEvent,
+  type HistoryItem,
   type IdentityCandidate,
   type SelectedIdentity,
 } from "@/lib/api";
 
 const STORAGE_KEY = "persona_anthropic_api_key";
 
-type AppState = "input" | "disambiguation" | "researching" | "result";
+type AppState = "input" | "disambiguation" | "researching" | "result" | "history";
 
 const getToolIcon = (toolName: string) => {
   if (toolName === "tavily_search" || toolName === "brave_search") return "search";
@@ -105,6 +112,12 @@ export default function LandingPage() {
   const [copied, setCopied] = useState(false);
   const [pdfDownloading, setPdfDownloading] = useState(false);
   const [forceRefresh, setForceRefresh] = useState(false);
+
+  // History tab state
+  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [pendingIdentity, setPendingIdentity] = useState<SelectedIdentity | null>(null);
 
   // API key state
   const [apiKey, setApiKey] = useState("");
@@ -229,6 +242,15 @@ export default function LandingPage() {
     setCurrentStatus("Checking identity...");
 
     try {
+      // If the user came from "Research fresh" in history, skip disambiguation —
+      // we already know who they meant. Clear the pending identity after using it.
+      if (pendingIdentity) {
+        const identityToUse = pendingIdentity;
+        setPendingIdentity(null);
+        await startStreamingResearch(identityToUse, false);
+        return;
+      }
+
       const disambiguation = await disambiguatePerson(personName, context, currentApiKey, forceRefresh);
 
       if (disambiguation.status === "ambiguous" && disambiguation.candidates.length > 0) {
@@ -314,6 +336,73 @@ export default function LandingPage() {
     setSelectedCandidateId(null);
     setCopied(false);
     setForceRefresh(false);
+    setPendingIdentity(null);
+  };
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setHistoryError("");
+    try {
+      const result = await getHistory(50, 0);
+      setHistoryItems(result.items);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load history.";
+      setHistoryError(message);
+      setHistoryItems([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  const handleOpenHistoryTab = async () => {
+    setAppState("history");
+    await loadHistory();
+  };
+
+  const handleOpenHistoryItem = async (item: HistoryItem) => {
+    try {
+      const full = item.brief ? item : await getHistoryItem(item.id);
+      if (!full.brief) {
+        throw new Error("Saved brief is empty.");
+      }
+      setPersonName(full.person_name);
+      setContext(full.meeting_context || "");
+      setOutput(full.brief);
+      setActivityLog([]);
+      setCurrentStatus("");
+      setCurrentIteration(0);
+      setCandidates([]);
+      setCandidateNote("");
+      setSelectedCandidateId(null);
+      setAppState("result");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not open saved brief.";
+      setHistoryError(message);
+    }
+  };
+
+  const handleDeleteHistoryItem = async (id: number) => {
+    try {
+      await deleteHistoryItem(id);
+      setHistoryItems((prev) => prev.filter((item) => item.id !== id));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to delete saved brief.";
+      setHistoryError(message);
+    }
+  };
+
+  const handleResearchFreshFromHistory = (item: HistoryItem) => {
+    setPersonName(item.person_name);
+    setContext(item.meeting_context || "");
+    setForceRefresh(true);
+    setPendingIdentity(item.selected_identity ?? null);
+    setOutput("");
+    setActivityLog([]);
+    setCandidates([]);
+    setCandidateNote("");
+    setSelectedCandidateId(null);
+    setHistoryError("");
+    setAppState("input");
   };
 
   const handleCopy = async () => {
@@ -370,6 +459,16 @@ export default function LandingPage() {
         </button>
 
         <div className="flex items-center gap-3">
+          {appState !== "history" && (
+            <button
+              type="button"
+              onClick={handleOpenHistoryTab}
+              className="flex items-center gap-1.5 rounded-full border border-[var(--border)] px-4 py-2 text-xs text-[var(--text-secondary)] transition-all hover:border-[var(--border-hover)] hover:text-[var(--text-primary)]"
+            >
+              <Clock className="h-3 w-3" />
+              History
+            </button>
+          )}
           {appState !== "input" && (
             <button
               type="button"
@@ -505,7 +604,12 @@ export default function LandingPage() {
                 id="person-name"
                 placeholder="e.g. Abdul Hannan Chowdhury, VC at NSU"
                 value={personName}
-                onChange={(event) => setPersonName(event.target.value)}
+                onChange={(event) => {
+                  setPersonName(event.target.value);
+                  // Editing the name means the saved identity from "Re-run" no
+                  // longer applies — drop it so we go through disambiguation again.
+                  if (pendingIdentity) setPendingIdentity(null);
+                }}
               />
             </div>
             <div className="space-y-2">
@@ -515,7 +619,10 @@ export default function LandingPage() {
                 rows={3}
                 placeholder="Pitch review, exploring partnership, interviewing candidate..."
                 value={context}
-                onChange={(event) => setContext(event.target.value)}
+                onChange={(event) => {
+                  setContext(event.target.value);
+                  if (pendingIdentity) setPendingIdentity(null);
+                }}
               />
             </div>
             <Button type="submit" disabled={formDisabled} className="w-full">
@@ -735,6 +842,112 @@ export default function LandingPage() {
               <ReactMarkdown>{output}</ReactMarkdown>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* ═══════════════════════ STATE: HISTORY ═══════════════════════ */}
+      <div
+        className={`absolute inset-0 flex flex-col items-center overflow-y-auto px-6 pb-12 pt-8 transition-all duration-500 ${
+          appState === "history" ? "pointer-events-auto translate-y-0 opacity-100" : "pointer-events-none translate-y-8 opacity-0"
+        }`}
+      >
+        <div className="w-full max-w-2xl">
+          <button
+            type="button"
+            onClick={handleNewResearch}
+            className="mb-6 flex items-center gap-1.5 text-sm text-[var(--text-tertiary)] transition hover:text-[var(--text-secondary)]"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Back
+          </button>
+
+          <div className="mb-6 flex items-end justify-between gap-4">
+            <div>
+              <h2 className="font-serif text-3xl text-[var(--text-primary)]">Saved briefs</h2>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                Every brief you generate is kept here until you delete it.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={loadHistory}
+              disabled={historyLoading}
+              className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-xs text-[var(--text-secondary)] transition-all hover:border-[var(--border-hover)] hover:text-[var(--text-primary)] disabled:opacity-50"
+            >
+              {historyLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Refresh
+            </button>
+          </div>
+
+          {historyError && (
+            <div className="mb-4 rounded-lg border border-[var(--error)]/30 bg-[var(--error)]/5 px-4 py-3 text-sm text-[var(--error)]">
+              {historyError}
+            </div>
+          )}
+
+          {historyLoading && historyItems.length === 0 ? (
+            <div className="flex items-center justify-center py-16 text-sm text-[var(--text-tertiary)]">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Loading saved briefs…
+            </div>
+          ) : historyItems.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-[var(--border)] py-16 text-center text-sm text-[var(--text-tertiary)]">
+              No saved briefs yet. Generate one and it&apos;ll appear here.
+            </div>
+          ) : (
+            <ul className="space-y-3">
+              {historyItems.map((item) => {
+                const created = new Date(item.created_at * 1000);
+                const dateLabel = created.toLocaleString(undefined, {
+                  year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+                });
+                return (
+                  <li
+                    key={item.id}
+                    className="rounded-2xl border border-[var(--border)] bg-[var(--bg-surface)] p-4 transition hover:border-[var(--border-hover)]"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium text-[var(--text-primary)]">{item.person_name}</p>
+                        {item.meeting_context && (
+                          <p className="mt-0.5 line-clamp-2 text-sm text-[var(--text-secondary)]">
+                            {item.meeting_context}
+                          </p>
+                        )}
+                        <p className="mt-1 text-xs text-[var(--text-tertiary)]">{dateLabel}</p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenHistoryItem(item)}
+                          className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-all hover:border-[var(--accent)]/40 hover:text-[var(--accent)]"
+                        >
+                          Open
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleResearchFreshFromHistory(item)}
+                          className="flex items-center gap-1 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--text-secondary)] transition-all hover:border-[var(--border-hover)] hover:text-[var(--text-primary)]"
+                          title="Prefill the form with this person + context and check 'Force fresh research'"
+                        >
+                          <RefreshCw className="h-3 w-3" />
+                          Re-run
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteHistoryItem(item.id)}
+                          className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-tertiary)] transition hover:bg-[var(--error)]/10 hover:text-[var(--error)]"
+                          aria-label="Delete saved brief"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
       </div>
 

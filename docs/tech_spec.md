@@ -1,5 +1,23 @@
 # Technical Specification
 
+## Brief History
+
+- Successful briefs are saved to a separate `brief_history` table inside the same SQLite file as the cache (`backend/cache.db`). See `backend/history.py`. Cache and history are deliberately separate concerns: cache is invisible optimization that expires; history is user-visible saved work that lives until the user deletes it.
+- Schema: `id INTEGER PRIMARY KEY AUTOINCREMENT`, `person_name TEXT NOT NULL`, `meeting_context TEXT`, `selected_identity TEXT` (JSON), `brief TEXT NOT NULL`, `created_at INTEGER NOT NULL` (unix epoch). Indexed by `created_at DESC` for list queries.
+- Insert site: a row is appended in `_run_agent_loop` immediately after `cache.set(brief_key, ...)`, gated on `final_response` being set (i.e. `stop_reason == "end_turn"`). Cache hits return earlier in the loop and therefore never duplicate a history row — verified by `test_history.py`.
+- Re-runs are append-only: each successful run adds a new row rather than updating an existing one, preserving point-in-time snapshots of past briefs.
+- Hard delete only. Soft delete was rejected because briefs can contain sensitive meeting prep — a "delete" should actually remove the row.
+- `cache.init_db()` calls `history.init_db()` (lazy import to avoid a circular) so a single startup hook creates both tables. `history.py` reuses `cache._connect()` so the DB path / WAL pragmas live in one place.
+- API surface (all behind `verify_api_key` + `enforce_rate_limit`):
+  - `GET /api/history?limit=50&offset=0` — paginated list, omits the brief body, returns `{items, total}`. `limit` is clamped to `[1, 200]`.
+  - `GET /api/history/{id}` — single saved brief in full. Returns 404 if missing.
+  - `DELETE /api/history/{id}` — hard delete. Returns 404 if missing, 204 on success.
+- Frontend surfaces history as a fifth app state (`"history"`), reachable from a "History" header button visible everywhere except inside the history view itself. Each row exposes:
+  - **Open** — fetches the full brief and renders it inside the existing result view.
+  - **Re-run** — prefills the input form with the saved name + context, checks the "Force fresh research" box, and stores the saved `selected_identity` in a `pendingIdentity` state. The next form submit skips disambiguation and calls `/api/research/stream` directly with that identity. `pendingIdentity` is cleared on **New**, on history-list re-entry, and on any keystroke in the name or context inputs (so editing the prefill correctly forces disambiguation again).
+  - **Delete** — calls `DELETE /api/history/{id}`, then prunes the row from local state optimistically.
+- Privacy: rows are stored plaintext, keyed only by request content. Same caveat as the cache layer — fine for local single-user, must be re-scoped (per-user namespacing or encryption-at-rest) before any multi-tenant hosting.
+
 ## Caching Layer
 
 - Tool results (Tavily, Brave, Firecrawl) and final agent briefs are cached in a single SQLite file at `backend/cache.db` (WAL mode, per-call connection). See `backend/cache.py`.
@@ -29,13 +47,17 @@
 
 ### API Structure Review
 
-- No API endpoints changed in this session.
-- Current API remains:
+- New endpoints added this session for the brief history feature.
+- Current API:
   - `GET /`
   - `GET /api/health`
   - `POST /api/research/disambiguate`
   - `POST /api/research`
   - `POST /api/research/stream`
+  - `POST /api/export/pdf`
+  - `GET /api/history`
+  - `GET /api/history/{id}`
+  - `DELETE /api/history/{id}`
 
 ## Backend Architecture
 
@@ -50,6 +72,8 @@ backend/
 |-- utils.py       # validate_person_name, sanitize_filename, save_brief_to_file
 |-- config.py      # Constants, system prompt, tool definitions, timeout values
 |-- models.py      # Pydantic request/response models
+|-- cache.py       # SQLite cache for tool results + briefs (TTL'd, invisible)
+|-- history.py     # SQLite brief_history table (user-visible saved briefs)
 `-- pyproject.toml # Dependencies
 ```
 
@@ -89,6 +113,10 @@ backend/
 - `POST /api/research/disambiguate` - quick low-cost identity disambiguation
 - `POST /api/research` - non-streaming research
 - `POST /api/research/stream` - SSE streaming research
+- `POST /api/export/pdf` - markdown brief to base64 PDF
+- `GET /api/history` - paginated list of saved briefs (slim rows + total)
+- `GET /api/history/{id}` - full saved brief
+- `DELETE /api/history/{id}` - hard delete a saved brief
 
 ### Request/Response Structure Changes
 
@@ -117,7 +145,7 @@ backend/
 ```text
 frontend/src/
 |-- app/
-|   |-- page.tsx     # 4-state app (input, disambiguation, researching, result)
+|   |-- page.tsx     # 5-state app (input, disambiguation, researching, result, history)
 |   |-- globals.css  # Dark theme, CSS variables, animations, prose-dossier styles
 |   `-- layout.tsx
 |-- components/ui/
@@ -134,19 +162,20 @@ frontend/src/
 
 - **Typography**: Instrument Serif (headings), Geist (body), Geist Mono (activity feed)
 - **Color palette**: Near-black backgrounds (#0C0C0E), warm white text (#F0EDE6), gold accent (#E8C872)
-- **Layout**: 4-state single-page app with crossfade transitions between states
+- **Layout**: 5-state single-page app with crossfade transitions between states
 - **Prose rendering**: Custom `prose-dossier` class for dark-themed markdown briefs
 
-### 4-State App Architecture
+### 5-State App Architecture
 
 1. **Input** - centered form with hero text, person name + context inputs
 2. **Disambiguation** - radio-select candidate list with confirm/skip actions
 3. **Researching** - SVG progress ring (iteration/15) + live monospace activity feed
 4. **Result** - full-viewport markdown dossier with copy/new-research actions
+5. **History** - list of saved briefs with Open / Re-run / Delete per row, opened via the "History" header button
 
 ### Frontend Regression Checks
 
-- `backend/scripts/test_frontend_research_flow.py` verifies the 4-state UI contract, progress ring, disambiguation actions, result actions, dark theme stylesheet, and dark root layout.
+- `backend/scripts/test_frontend_research_flow.py` verifies the 5-state UI contract, progress ring, disambiguation actions, result actions, dark theme stylesheet, and dark root layout.
 
 ### Markdown Rendering
 

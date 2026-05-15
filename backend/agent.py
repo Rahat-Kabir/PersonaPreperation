@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 from anthropic import Anthropic, APIError, APIConnectionError, RateLimitError
 
 import cache
+import history
 from config import (
     ANTHROPIC_TIMEOUT,
     DEFAULT_MAX_TOKENS,
@@ -910,6 +911,14 @@ async def _run_agent_loop(
     if final_response:
         logger.info("Research completed successfully.")
         cache.set(brief_key, final_response, cache.BRIEF_TTL)
+        # Save to user-visible history (separate from invisible cache).
+        # Only fresh briefs land here — cache hits return earlier and skip this.
+        history.insert(
+            person_name=person_name,
+            meeting_context=meeting_context,
+            selected_identity=selected_identity,
+            brief=final_response,
+        )
         await on_event(_make_event("complete", {
             "brief": final_response,
             "person_name": person_name,

@@ -1,5 +1,45 @@
 ﻿# Progress
 
+## 2026-05-16 - Brief history (saved briefs, separate from cache)
+
+### Decisions and implementation
+
+1. Added `backend/history.py` — a `brief_history` table living in the same SQLite file as the cache (`backend/cache.db`), with its own connection helper that reuses `cache._connect()`. Schema: `id`, `person_name`, `meeting_context`, `selected_identity` (JSON), `brief`, `created_at` (epoch). Indexed by `created_at DESC`. Cache vs history kept as separate modules so the boundary stays clean: cache is invisible optimization, history is user-visible saved work.
+
+2. Wired the insert into `_run_agent_loop` immediately after `cache.set(brief_key, ...)`, only on `final_response` (i.e. `stop_reason == "end_turn"`). Cache hits return earlier in the loop and therefore never duplicate a row — covered by `test_history.py`. Re-runs append a new row instead of updating, preserving point-in-time snapshots.
+
+3. Hard delete only — soft delete was rejected because briefs can contain sensitive meeting prep, so a "delete" should actually remove the row.
+
+4. New API endpoints (all behind existing auth + rate-limit dependencies):
+   - `GET /api/history?limit=50&offset=0` — paginated, slim rows + `total`. `limit` clamped to `[1, 200]`.
+   - `GET /api/history/{id}` — full saved brief (404 if missing).
+   - `DELETE /api/history/{id}` — hard delete (404 if missing, 204 on success).
+
+5. New Pydantic models: `HistoryItem`, `HistoryListResponse`. `cache.init_db()` now also calls `history.init_db()` (lazy import to break the circular).
+
+6. Frontend gained a fifth app state, `"history"`. A "History" header button is visible everywhere except inside the history view. Each row exposes:
+   - **Open** — fetches the full brief and switches to the existing result view.
+   - **Re-run** — prefills name + context, checks "Force fresh research", and stashes the saved `selected_identity` in a `pendingIdentity` state so the next form submit skips disambiguation. `pendingIdentity` is cleared on **New** and on any keystroke in the name/context inputs (so editing the prefill correctly forces disambiguation again).
+   - **Delete** — hard-deletes the row and prunes local list state optimistically.
+
+7. New frontend client functions in `frontend/src/lib/api.ts`: `getHistory`, `getHistoryItem`, `deleteHistoryItem`, plus `HistoryItem` / `HistoryListResponse` types.
+
+8. Updated `test_frontend_research_flow.py` to expect the 5-state app union (`input | disambiguation | researching | result | history`).
+
+### Validation
+
+1. Validation run:
+   - `uv run python scripts/test_history.py` — 21/21 (insert/get/list/delete roundtrip, pagination DESC ordering + total, blank-brief rejection, delete-missing returns False, cache-hit-doesn't-duplicate-history)
+   - `uv run python scripts/test_cache.py` — 22/22
+   - `uv run python scripts/test_agent.py` — 58/58
+   - `uv run python scripts/test_tools.py` — 21/21
+   - `uv run python scripts/test_disambiguation.py` — 20/20
+   - `uv run python scripts/test_models.py` — 9/9
+   - `uv run python scripts/test_pdf_export.py` — green
+   - `uv run python scripts/test_frontend_research_flow.py` — 7/7
+   - `npm run build` — green
+2. Browser QA (Playwright, viewport 1440×900) covered all five states. Open / Re-run / Delete flows verified end-to-end. No JSX/CSS issues found; an earlier "broken UI" report turned out to be a stale `.next` build cache, resolved by deleting `frontend/.next` and restarting the dev server.
+
 ## 2026-05-15 - SQLite cache for tool results and briefs
 
 ### Decisions and implementation

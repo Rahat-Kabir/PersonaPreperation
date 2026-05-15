@@ -33,9 +33,9 @@ globals_source = GLOBALS_FILE.read_text(encoding="utf-8")
 layout_source = LAYOUT_FILE.read_text(encoding="utf-8")
 
 check(
-    "page declares the 4-state app flow",
-    'type AppState = "input" | "disambiguation" | "researching" | "result";' in page_source,
-    "frontend/src/app/page.tsx should keep the explicit 4-state UI contract",
+    "page declares the 5-state app flow",
+    'type AppState = "input" | "disambiguation" | "researching" | "result" | "history";' in page_source,
+    "frontend/src/app/page.tsx should keep the explicit 5-state UI contract (input | disambiguation | researching | result | history)",
 )
 check(
     "researching state keeps the progress ring",

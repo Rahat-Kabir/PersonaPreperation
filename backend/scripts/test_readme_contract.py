@@ -60,6 +60,21 @@ check(
     and "continue_anyway=true" in source,
     "README should describe the intended API usage pattern",
 )
+check(
+    "README documents the saved-briefs (history) feature",
+    "## Saved Briefs (History)" in source
+    and "GET /api/history" in source
+    and "DELETE /api/history/{id}" in source,
+    "README should explain that briefs are persisted and list the history endpoints",
+)
+check(
+    "README documents the cache + force-refresh escape hatch",
+    "## Caching" in source
+    and "Force fresh research" in source
+    and "--force-refresh" in source
+    and "force_refresh: true" in source,
+    "README should explain caching and how to bypass it from web/CLI/API",
+)
 
 print(f"\n{'=' * 40}")
 print(f"Results: {passed} passed, {failed} failed")

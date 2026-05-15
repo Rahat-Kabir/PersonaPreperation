@@ -31,12 +31,15 @@ from models import (
     DisambiguationResponse,
     ExportPDFRequest,
     ExportPDFResponse,
+    HistoryItem,
+    HistoryListResponse,
 )
 from agent import research_person_with_tools, research_person_with_tools_stream, disambiguate_person_name
 from tools import ToolExecutor
 from utils import validate_person_name
 from config import PDF_HTML_TEMPLATE
 import cache
+import history
 
 # Load environment variables
 load_dotenv()
@@ -435,6 +438,46 @@ async def export_brief_pdf(
     except Exception as e:
         logger.error(f"PDF export failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+
+
+@app.get("/api/history", response_model=HistoryListResponse)
+async def list_history(
+    limit: int = 50,
+    offset: int = 0,
+    _: None = Depends(verify_api_key),
+    __: None = Depends(enforce_rate_limit),
+):
+    """Return saved briefs (most recent first), without the brief body."""
+    result = history.list_items(limit=limit, offset=offset)
+    return HistoryListResponse(
+        items=[HistoryItem(**item) for item in result["items"]],
+        total=result["total"],
+    )
+
+
+@app.get("/api/history/{item_id}", response_model=HistoryItem)
+async def get_history_item(
+    item_id: int,
+    _: None = Depends(verify_api_key),
+    __: None = Depends(enforce_rate_limit),
+):
+    """Return a single saved brief in full."""
+    row = history.get(item_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="History item not found")
+    return HistoryItem(**row)
+
+
+@app.delete("/api/history/{item_id}", status_code=204)
+async def delete_history_item(
+    item_id: int,
+    _: None = Depends(verify_api_key),
+    __: None = Depends(enforce_rate_limit),
+):
+    """Hard-delete a saved brief. Returns 404 if it does not exist."""
+    if not history.delete(item_id):
+        raise HTTPException(status_code=404, detail="History item not found")
+    return None
 
 
 if __name__ == "__main__":

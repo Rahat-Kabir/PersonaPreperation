@@ -94,6 +94,22 @@ class ExportPDFResponse(BaseModel):
     pdf_base64: str = Field(..., description="Base64-encoded PDF bytes")
 
 
+class HistoryItem(BaseModel):
+    """A saved brief in user-visible history."""
+    id: int
+    person_name: str
+    meeting_context: str = ""
+    selected_identity: Optional[SelectedIdentity] = None
+    created_at: int = Field(..., description="Unix epoch seconds when the brief was saved")
+    brief: Optional[str] = Field(None, description="Full markdown brief; omitted in list responses")
+
+
+class HistoryListResponse(BaseModel):
+    """Paginated list of saved briefs."""
+    items: list[HistoryItem]
+    total: int
+
+
 class AgentEvent(BaseModel):
     """Server-Sent Event model for real-time agent updates."""
     event_type: Literal["start", "tool_call", "tool_result", "thinking", "complete", "error"] = Field(

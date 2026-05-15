@@ -150,6 +150,64 @@ export async function disambiguatePerson(
   return (await response.json()) as DisambiguationResponse;
 }
 
+export interface HistoryItem {
+  id: number;
+  person_name: string;
+  meeting_context: string;
+  selected_identity?: SelectedIdentity | null;
+  created_at: number;
+  brief?: string | null;
+}
+
+export interface HistoryListResponse {
+  items: HistoryItem[];
+  total: number;
+}
+
+export async function getHistory(
+  limit = 50,
+  offset = 0
+): Promise<HistoryListResponse> {
+  const apiBaseUrl = getApiBaseUrl();
+  const response = await fetch(
+    `${apiBaseUrl}/api/history?limit=${limit}&offset=${offset}`,
+    { method: "GET", headers: buildHeaders() }
+  );
+  if (!response.ok) {
+    throw new Error("Unable to load history.");
+  }
+  return (await response.json()) as HistoryListResponse;
+}
+
+export async function getHistoryItem(id: number): Promise<HistoryItem> {
+  const apiBaseUrl = getApiBaseUrl();
+  const response = await fetch(`${apiBaseUrl}/api/history/${id}`, {
+    method: "GET",
+    headers: buildHeaders(),
+  });
+  if (response.status === 404) {
+    throw new Error("History item not found.");
+  }
+  if (!response.ok) {
+    throw new Error("Unable to load saved brief.");
+  }
+  return (await response.json()) as HistoryItem;
+}
+
+export async function deleteHistoryItem(id: number): Promise<void> {
+  const apiBaseUrl = getApiBaseUrl();
+  const response = await fetch(`${apiBaseUrl}/api/history/${id}`, {
+    method: "DELETE",
+    headers: buildHeaders(),
+  });
+  if (response.status === 404) {
+    throw new Error("History item not found.");
+  }
+  if (!response.ok) {
+    throw new Error("Unable to delete saved brief.");
+  }
+}
+
 export async function generateBriefStream(
   personName: string,
   meetingContext: string,

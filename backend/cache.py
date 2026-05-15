@@ -54,9 +54,13 @@ def _connect() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """Idempotently create the cache table. Call once at startup."""
+    """Idempotently create the cache + brief_history tables. Call once at startup."""
     with _connect() as conn:
         conn.executescript(_SCHEMA)
+    # history shares this DB file but owns its own table; import locally to
+    # avoid a circular import at module load.
+    import history
+    history.init_db()
 
 
 def _canonical_json(payload: Any) -> str:
