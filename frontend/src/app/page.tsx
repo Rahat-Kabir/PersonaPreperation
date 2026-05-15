@@ -5,6 +5,7 @@ import {
   ArrowRight,
   Check,
   ClipboardCopy,
+  Download,
   Eye,
   EyeOff,
   Globe,
@@ -24,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   disambiguatePerson,
+  exportBriefPDF,
   generateBriefStream,
   type AgentEvent,
   type IdentityCandidate,
@@ -101,6 +103,7 @@ export default function LandingPage() {
   const [candidateNote, setCandidateNote] = useState("");
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [pdfDownloading, setPdfDownloading] = useState(false);
 
   // API key state
   const [apiKey, setApiKey] = useState("");
@@ -315,6 +318,23 @@ export default function LandingPage() {
     await navigator.clipboard.writeText(output);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDownloadPDF = async () => {
+    setPdfDownloading(true);
+    try {
+      const blob = await exportBriefPDF(output, personName);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${personName.replace(/\s+/g, "-")}-brief.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("PDF download failed:", error);
+    } finally {
+      setPdfDownloading(false);
+    }
   };
 
   const maskedKey = apiKey
@@ -675,6 +695,17 @@ export default function LandingPage() {
               >
                 {copied ? <Check className="h-3.5 w-3.5 text-[var(--success)]" /> : <ClipboardCopy className="h-3.5 w-3.5" />}
                 {copied ? "Copied" : "Copy"}
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadPDF}
+                disabled={pdfDownloading}
+                className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-xs text-[var(--text-secondary)] transition-all hover:border-[var(--border-hover)] hover:text-[var(--text-primary)] disabled:opacity-50"
+              >
+                {pdfDownloading
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Download className="h-3.5 w-3.5" />}
+                {pdfDownloading ? "Generating…" : "PDF"}
               </button>
               <button
                 type="button"

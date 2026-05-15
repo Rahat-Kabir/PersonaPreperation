@@ -30,6 +30,8 @@ Each brief includes:
 - Unknowns and evidence gaps
 - Source URLs
 
+You can copy the brief to clipboard or download it as a PDF.
+
 ## Demo
 
 ![PersonaPreparation Interface](demo/homepage1.png)
@@ -127,7 +129,7 @@ You can use either:
 5. If needed, select the correct person from the identity check step
 6. Wait while research runs and live progress is streamed
 7. Review the final brief
-8. Copy the brief if needed
+8. Copy the brief to clipboard or click **PDF** to download it as a formatted document
 
 Notes:
 
@@ -152,6 +154,7 @@ The CLI allows optional meeting context and can save the generated brief to `PER
 - `POST /api/research/disambiguate`
 - `POST /api/research`
 - `POST /api/research/stream`
+- `POST /api/export/pdf`
 
 ### Typical Flow
 
@@ -168,6 +171,7 @@ Swagger docs are available at `http://localhost:8000/docs`.
 - All `POST` endpoints accept `person_name`
 - `meeting_context` is optional at the API level
 - `anthropic_api_key` is optional and overrides the backend default key
+- `POST /api/export/pdf` accepts `{ "brief": "<markdown>", "person_name": "<name>" }` and returns an `application/pdf` binary
 
 ## Development
 
@@ -193,6 +197,7 @@ uv run python scripts/test_prompt_contract.py
 uv run python scripts/test_models.py
 uv run python scripts/test_disambiguation.py
 uv run python scripts/test_readme_contract.py
+uv run python scripts/test_pdf_export.py
 ```
 
 ### Frontend

@@ -37,6 +37,73 @@ logging.basicConfig(
 logger = logging.getLogger("persona_preparation")
 
 
+PDF_HTML_TEMPLATE = """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 14px;
+    line-height: 1.75;
+    color: #1a1a1a;
+    background: #ffffff;
+    padding: 48px 56px;
+    max-width: 860px;
+    margin: 0 auto;
+  }}
+  h1 {{ font-size: 28px; color: #111111; margin-bottom: 6px; }}
+  h2 {{
+    font-size: 17px;
+    color: #8B6914;
+    margin-top: 28px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #e8e0cc;
+    padding-bottom: 5px;
+    font-style: italic;
+  }}
+  h3 {{ font-size: 15px; color: #333333; margin-top: 18px; margin-bottom: 8px; }}
+  p {{ margin-bottom: 10px; }}
+  ul, ol {{ margin: 6px 0 12px 22px; }}
+  li {{ margin-bottom: 5px; line-height: 1.65; }}
+  strong {{ color: #111111; font-weight: 600; }}
+  a {{ color: #8B6914; text-decoration: none; word-break: break-all; }}
+  hr {{ border: none; border-top: 1px solid #e0d8c8; margin: 20px 0; }}
+  code {{
+    font-family: "Courier New", Courier, monospace;
+    font-size: 12px;
+    background: #f5f2eb;
+    padding: 1px 4px;
+    border-radius: 3px;
+  }}
+  .doc-header {{
+    border-bottom: 2px solid #B8860B;
+    padding-bottom: 18px;
+    margin-bottom: 28px;
+  }}
+  .doc-title {{ font-size: 30px; color: #111111; letter-spacing: -0.5px; }}
+  .doc-meta {{
+    font-size: 11px;
+    color: #999999;
+    font-family: "Courier New", Courier, monospace;
+    margin-top: 6px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }}
+</style>
+</head>
+<body>
+  <div class="doc-header">
+    <h1 class="doc-title">{person_name}</h1>
+    <p class="doc-meta">Meeting Brief &middot; {date}</p>
+  </div>
+  {content}
+</body>
+</html>"""
+
+
 SYSTEM_PROMPT = """You are PersonaPreparation, an AI meeting preparation strategist with real-time research capabilities.
 
 Your mission: Help users prepare for meetings by researching people and providing actionable strategies, clear recommendations, and specific guidance on what to do and what to avoid.
