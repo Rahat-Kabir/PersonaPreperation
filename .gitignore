@@ -1,6 +1,7 @@
 # Environment variables
 .env
 .env.*
+!.env.example
 
 # Python
 __pycache__/
@@ -23,8 +24,8 @@ yarn-error.log*
 
 # Generated briefs & logs
 briefs/
-persona_agent_tools.log
 logs/
+*.log
 
 # IDE
 .vscode/
@@ -36,9 +37,6 @@ Thumbs.db
 
 # Claude Code local settings
 .claude/
-
-CLAUDE.md
-AGENTS.md
 
 # Build artifacts
 frontend/tsconfig.tsbuildinfo
