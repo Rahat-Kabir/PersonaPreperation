@@ -83,6 +83,13 @@ class ExportPDFRequest(BaseModel):
     person_name: str = Field(..., max_length=200, description="Person name used as the PDF document title")
 
 
+class ExportPDFResponse(BaseModel):
+    """Response model for browser-safe PDF brief export."""
+    filename: str = Field(..., description="Suggested PDF filename")
+    content_type: str = Field(default="application/pdf", description="MIME type of the decoded file")
+    pdf_base64: str = Field(..., description="Base64-encoded PDF bytes")
+
+
 class AgentEvent(BaseModel):
     """Server-Sent Event model for real-time agent updates."""
     event_type: Literal["start", "tool_call", "tool_result", "thinking", "complete", "error"] = Field(

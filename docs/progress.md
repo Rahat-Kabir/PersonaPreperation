@@ -1,5 +1,28 @@
 ﻿# Progress
 
+## 2026-05-15 - PDF export import regression fix
+
+### Decisions and implementation
+
+1. Fixed `backend/main.py` import syntax for the merged PDF export endpoint.
+   - Split the accidental `from xhtml2pdf import pisaimport json` line into separate `pisa` and `json` imports.
+
+2. Hardened `backend/scripts/test_pdf_export.py`.
+   - Updated stale WeasyPrint wording to xhtml2pdf.
+   - Added a regression check that imports `main.py` and verifies `/api/export/pdf` is registered, so future syntax/import issues fail the PDF test.
+   - Added a handler-level check that `/api/export/pdf` returns JSON-safe base64 PDF data.
+
+3. Changed PDF download transport to avoid IDM/local download-manager interception.
+   - Backend now returns `filename`, `content_type`, and `pdf_base64` instead of a direct `application/pdf` binary response.
+   - Frontend decodes the base64 payload into a local Blob and downloads from a `blob:` URL.
+
+### Validation
+
+1. Validation run:
+   - `uv run python scripts/test_pdf_export.py`
+   - backend regression scripts
+   - frontend `npm run build`
+
 ## 2026-03-11 - README rewrite around actual product flow
 
 ### Decisions and implementation

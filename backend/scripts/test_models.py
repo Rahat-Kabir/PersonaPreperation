@@ -10,6 +10,7 @@ from models import (
     ResearchResponse,
     IdentityCandidate,
     DisambiguationResponse,
+    ExportPDFResponse,
     SelectedIdentity,
 )
 
@@ -67,6 +68,14 @@ res = ResearchResponse(
     disambiguation_status="ambiguous",
 )
 check("research response stores disambiguation status", res.disambiguation_status == "ambiguous")
+
+pdf_res = ExportPDFResponse(
+    filename="Jane-Smith-brief.pdf",
+    content_type="application/pdf",
+    pdf_base64="JVBERi0=",
+)
+check("pdf export response stores base64 payload", pdf_res.pdf_base64 == "JVBERi0=")
+check("pdf export response stores filename", pdf_res.filename.endswith(".pdf"))
 
 print(f"\n{'=' * 40}")
 print(f"Results: {passed} passed, {failed} failed")

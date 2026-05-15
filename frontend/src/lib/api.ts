@@ -58,7 +58,16 @@ function buildHeaders(): HeadersInit {
   return headers;
 }
 
-export async function exportBriefPDF(brief: string, personName: string): Promise<Blob> {
+interface ExportPDFResponse {
+  filename: string;
+  content_type: string;
+  pdf_base64: string;
+}
+
+export async function exportBriefPDF(
+  brief: string,
+  personName: string
+): Promise<{ blob: Blob; filename: string }> {
   const apiBaseUrl = getApiBaseUrl();
 
   const response = await fetch(`${apiBaseUrl}/api/export/pdf`, {
@@ -71,7 +80,17 @@ export async function exportBriefPDF(brief: string, personName: string): Promise
     throw new Error("Unable to generate PDF. Please try again.");
   }
 
-  return response.blob();
+  const data = (await response.json()) as ExportPDFResponse;
+  const binary = atob(data.pdf_base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return {
+    blob: new Blob([bytes], { type: data.content_type || "application/pdf" }),
+    filename: data.filename || `${personName.replace(/\s+/g, "-")}-brief.pdf`,
+  };
 }
 
 

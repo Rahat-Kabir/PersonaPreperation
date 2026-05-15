@@ -323,11 +323,11 @@ export default function LandingPage() {
   const handleDownloadPDF = async () => {
     setPdfDownloading(true);
     try {
-      const blob = await exportBriefPDF(output, personName);
+      const { blob, filename } = await exportBriefPDF(output, personName);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${personName.replace(/\s+/g, "-")}-brief.pdf`;
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {

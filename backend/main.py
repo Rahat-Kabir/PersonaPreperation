@@ -4,6 +4,7 @@ Provides HTTP endpoints for the research agent functionality.
 """
 
 import asyncio
+import base64
 import io
 import os
 import logging
@@ -19,7 +20,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from anthropic import Anthropic
-from xhtml2pdf import pisaimport json
+from xhtml2pdf import pisa
+import json
 
 from models import (
     ResearchRequest,
@@ -28,6 +30,7 @@ from models import (
     AgentEvent,
     DisambiguationResponse,
     ExportPDFRequest,
+    ExportPDFResponse,
 )
 from agent import research_person_with_tools, research_person_with_tools_stream, disambiguate_person_name
 from tools import ToolExecutor
@@ -384,13 +387,13 @@ async def research_person_disambiguate(
     return DisambiguationResponse(**result)
 
 
-@app.post("/api/export/pdf")
+@app.post("/api/export/pdf", response_model=ExportPDFResponse)
 async def export_brief_pdf(
     request: ExportPDFRequest,
     _: None = Depends(verify_api_key),
     __: None = Depends(enforce_rate_limit),
 ):
-    """Convert a markdown meeting brief to a downloadable PDF."""
+    """Convert a markdown meeting brief to base64 PDF data for browser-side download."""
     logger.info("PDF export request received.")
     try:
         html_body = md_lib.markdown(request.brief, extensions=["extra"])
@@ -411,13 +414,13 @@ async def export_brief_pdf(
         pdf_bytes = await loop.run_in_executor(None, _render_pdf, html)
 
         safe_name = re.sub(r"[^\w\s-]", "", request.person_name).strip().replace(" ", "-")
-        filename = f"{safe_name}-brief.pdf"
+        filename = f"{safe_name or 'brief'}-brief.pdf"
 
         logger.info(f"PDF generated: {filename}")
-        return StreamingResponse(
-            io.BytesIO(pdf_bytes),
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        return ExportPDFResponse(
+            filename=filename,
+            content_type="application/pdf",
+            pdf_base64=base64.b64encode(pdf_bytes).decode("ascii"),
         )
     except Exception as e:
         logger.error(f"PDF export failed: {e}", exc_info=True)

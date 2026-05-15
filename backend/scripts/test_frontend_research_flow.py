@@ -53,6 +53,11 @@ check(
     "frontend/src/app/page.tsx should preserve result actions for copy and new research",
 )
 check(
+    "result state keeps PDF download control",
+    "handleDownloadPDF" in page_source and 'pdfDownloading ? "Generating…"' in page_source,
+    "frontend/src/app/page.tsx should preserve the PDF export action",
+)
+check(
     "dark theme stylesheet keeps dossier styling",
     ".prose-dossier" in globals_source and "--accent: #E8C872;" in globals_source,
     "frontend/src/app/globals.css should keep the dark dossier theme tokens",

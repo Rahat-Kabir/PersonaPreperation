@@ -2,6 +2,7 @@
 
 ## Documentation Decisions
 
+- PDF export is exposed as `POST /api/export/pdf`; it returns JSON with base64 PDF data so browser-side downloads do not require a second authenticated file request. Its regression script imports `backend/main.py` and verifies the route is registered so syntax/import issues block the PDF test.
 - `README.md` now starts with the implemented product flow instead of a long features-first introduction.
 - The README now explains the end-user sequence clearly:
   1. enter person name and meeting context

@@ -171,7 +171,7 @@ Swagger docs are available at `http://localhost:8000/docs`.
 - All `POST` endpoints accept `person_name`
 - `meeting_context` is optional at the API level
 - `anthropic_api_key` is optional and overrides the backend default key
-- `POST /api/export/pdf` accepts `{ "brief": "<markdown>", "person_name": "<name>" }` and returns an `application/pdf` binary
+- `POST /api/export/pdf` accepts `{ "brief": "<markdown>", "person_name": "<name>" }` and returns JSON with `filename`, `content_type`, and `pdf_base64`; the frontend decodes it into a local PDF download
 
 ## Development
 

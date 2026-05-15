@@ -1,9 +1,10 @@
 """
 Test script for the PDF export endpoint.
-Validates markdown-to-PDF conversion via WeasyPrint without a running server.
+Validates markdown-to-PDF conversion via xhtml2pdf without a running server.
 """
 
 import asyncio
+import base64
 import io
 import sys
 import os
@@ -104,6 +105,29 @@ def test_export_pdf_model():
     print("PASS  export_pdf_model")
 
 
+def test_main_imports_pdf_endpoint():
+    """FastAPI module should import and register the PDF export route."""
+    from main import app
+
+    routes = {getattr(route, "path", "") for route in app.routes}
+    assert "/api/export/pdf" in routes, "Expected PDF export endpoint to be registered"
+    print("PASS  main_imports_pdf_endpoint")
+
+
+def test_export_endpoint_returns_base64_json():
+    """PDF export handler should return JSON-safe base64 data for browser download."""
+    from main import export_brief_pdf
+    from models import ExportPDFRequest, ExportPDFResponse
+
+    response = asyncio.run(export_brief_pdf(ExportPDFRequest(brief=SAMPLE_BRIEF, person_name="Jane Doe")))
+    assert isinstance(response, ExportPDFResponse)
+    assert response.filename == "Jane-Doe-brief.pdf"
+    assert response.content_type == "application/pdf"
+    pdf_bytes = base64.b64decode(response.pdf_base64)
+    assert pdf_bytes[:4] == b"%PDF", "Decoded payload does not start with PDF magic bytes"
+    print("PASS  export_endpoint_returns_base64_json")
+
+
 def test_filename_sanitisation():
     """Person names with special chars should produce safe filenames."""
     import re
@@ -126,6 +150,8 @@ if __name__ == "__main__":
         test_pdf_html_template,
         test_xhtml2pdf_generates_pdf,
         test_export_pdf_model,
+        test_main_imports_pdf_endpoint,
+        test_export_endpoint_returns_base64_json,
         test_filename_sanitisation,
     ]
     failures = []
