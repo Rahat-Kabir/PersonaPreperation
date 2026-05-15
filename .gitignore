@@ -47,3 +47,4 @@ Thumbs.db
 # Build artifacts
 frontend/tsconfig.tsbuildinfo
 
+.playwright-mcp/

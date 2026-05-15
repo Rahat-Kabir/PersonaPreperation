@@ -4,7 +4,7 @@
 
 You give it a name and a sentence about why you're meeting. It searches public sources, figures out who the person actually is, and hands back a one-page brief: their background, what they've been working on, what to talk about, and what to avoid.
 
-![PersonaPreparation Interface](demo/homepage1.png)
+![PersonaPreparation Interface](demo/homepage2.png)
 
 ---
 
