@@ -71,11 +71,12 @@ def test_pdf_html_template():
     print("PASS  pdf_html_template")
 
 
-def test_weasyprint_generates_pdf():
-    """WeasyPrint should produce a non-empty PDF from the HTML template."""
+def test_xhtml2pdf_generates_pdf():
+    """xhtml2pdf should produce a non-empty PDF from the HTML template."""
     from config import PDF_HTML_TEMPLATE
     import markdown as md_lib
-    from weasyprint import HTML as WeasyprintHTML
+    import io
+    from xhtml2pdf import pisa
     from datetime import datetime
 
     html_body = md_lib.markdown(SAMPLE_BRIEF, extensions=["extra"])
@@ -84,12 +85,14 @@ def test_weasyprint_generates_pdf():
         date=datetime.now().strftime("%B %d, %Y"),
         content=html_body,
     )
-    pdf_bytes = WeasyprintHTML(string=html).write_pdf()
+    buf = io.BytesIO()
+    status = pisa.CreatePDF(html, dest=buf)
+    assert not status.err, f"xhtml2pdf reported {status.err} error(s)"
+    pdf_bytes = buf.getvalue()
     assert isinstance(pdf_bytes, bytes), "Expected bytes output"
     assert len(pdf_bytes) > 1000, f"PDF suspiciously small: {len(pdf_bytes)} bytes"
-    # PDF magic bytes
     assert pdf_bytes[:4] == b"%PDF", "Output does not start with PDF magic bytes"
-    print(f"PASS  weasyprint_generates_pdf  ({len(pdf_bytes):,} bytes)")
+    print(f"PASS  xhtml2pdf_generates_pdf  ({len(pdf_bytes):,} bytes)")
 
 
 def test_export_pdf_model():
@@ -121,7 +124,7 @@ if __name__ == "__main__":
     tests = [
         test_markdown_to_html,
         test_pdf_html_template,
-        test_weasyprint_generates_pdf,
+        test_xhtml2pdf_generates_pdf,
         test_export_pdf_model,
         test_filename_sanitisation,
     ]

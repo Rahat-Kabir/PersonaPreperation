@@ -19,8 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from anthropic import Anthropic
-from weasyprint import HTML as WeasyprintHTML
-import json
+from xhtml2pdf import pisaimport json
 
 from models import (
     ResearchRequest,
@@ -401,11 +400,15 @@ async def export_brief_pdf(
             content=html_body,
         )
 
+        def _render_pdf(html_source: str) -> bytes:
+            buf = io.BytesIO()
+            status = pisa.CreatePDF(html_source, dest=buf)
+            if status.err:
+                raise RuntimeError(f"PDF render failed with {status.err} error(s)")
+            return buf.getvalue()
+
         loop = asyncio.get_event_loop()
-        pdf_bytes = await loop.run_in_executor(
-            None,
-            lambda: WeasyprintHTML(string=html).write_pdf(),
-        )
+        pdf_bytes = await loop.run_in_executor(None, _render_pdf, html)
 
         safe_name = re.sub(r"[^\w\s-]", "", request.person_name).strip().replace(" ", "-")
         filename = f"{safe_name}-brief.pdf"
