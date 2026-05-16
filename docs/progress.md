@@ -1,5 +1,19 @@
 ﻿# Progress
 
+## 2026-05-16 - Sources sidebar on result screen
+
+### Decisions and implementation
+
+1. Added `parseBriefSources()` to [frontend/src/lib/api.ts](../frontend/src/lib/api.ts) — a pure client-side parser that splits the brief markdown at `## Sources` and extracts URLs (markdown-link form + bare URLs), returning `{ body, sources: [{ url, title, hostname }] }`. Chose client-side parsing to keep the backend, cache, and history pipelines untouched; the same parser is the single source of truth for fresh briefs, cached briefs, and history reopens.
+
+2. Result screen ([frontend/src/app/page.tsx](../frontend/src/app/page.tsx)) now widens to `max-w-6xl` and renders `parsedBrief.body` (the brief with `## Sources` stripped) in an 8-col article alongside a 4-col sticky `<aside>` listing the cited sources with hostname + clickable title. Sidebar collapses below the article on `<lg` widths.
+
+3. Masthead source count now prefers the cited count (sidebar) and falls back to the live `activityLog` count for in-flight runs, so the number on screen matches what the user can actually click.
+
+4. No backend changes: the existing `## Sources` section in the system prompt ([backend/config.py:174](../backend/config.py)) was already producing structured URLs at the end of every brief. PDF export still receives the full markdown, so the printed dossier keeps its Sources section intact.
+
+5. Validation: `npm run build` clean. No backend script needed (pure frontend change, no API surface or model change).
+
 ## 2026-05-16 - Brief history (saved briefs, separate from cache)
 
 ### Decisions and implementation

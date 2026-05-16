@@ -30,6 +30,7 @@ import {
   generateBriefStream,
   getHistory,
   getHistoryItem,
+  parseBriefSources,
   type AgentEvent,
   type HistoryItem,
   type IdentityCandidate,
@@ -442,6 +443,9 @@ export default function LandingPage() {
     : "";
 
   const sourceCount = activityLog.filter((l) => l.kind === "result").length;
+
+  const parsedBrief = useMemo(() => parseBriefSources(output), [output]);
+  const citedSourceCount = parsedBrief.sources.length;
 
   return (
     <div className="relative flex h-screen w-full flex-col overflow-hidden bg-[var(--bg-primary)]">
@@ -928,7 +932,7 @@ export default function LandingPage() {
           appState === "result" ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
         }`}
       >
-        <div className="mx-auto w-full max-w-4xl px-6 py-10 sm:px-10 lg:px-14 lg:py-14">
+        <div className="mx-auto w-full max-w-6xl px-6 py-10 sm:px-10 lg:px-14 lg:py-14">
           {/* Masthead */}
           <header className="border-b border-[var(--text-primary)] pb-6">
             <div className="flex items-center justify-between">
@@ -977,14 +981,63 @@ export default function LandingPage() {
               {researchStartedAt && researchFinishedAt && (
                 <span>compiled · {formatElapsed(researchFinishedAt - researchStartedAt)}</span>
               )}
-              {sourceCount > 0 && <span>{String(sourceCount).padStart(2, "0")} sources</span>}
+              {(citedSourceCount || sourceCount) > 0 && (
+                <span>
+                  {String(citedSourceCount || sourceCount).padStart(2, "0")} sources
+                </span>
+              )}
             </div>
           </header>
 
-          {/* Body */}
-          <article className="prose-dossier mt-10 max-w-[680px]">
-            <ReactMarkdown>{output}</ReactMarkdown>
-          </article>
+          {/* Body + Sources */}
+          <div className="mt-10 grid grid-cols-12 gap-10">
+            <article className="prose-dossier col-span-12 max-w-[680px] lg:col-span-8">
+              <ReactMarkdown>{parsedBrief.body}</ReactMarkdown>
+            </article>
+
+            <aside className="col-span-12 lg:col-span-4">
+              <div className="lg:sticky lg:top-6">
+                <div className="flex items-baseline justify-between border-b border-[var(--text-primary)] pb-2">
+                  <p className="eyebrow">Sources</p>
+                  <span className="font-mono text-[10px] tabular-nums text-[var(--text-tertiary)]">
+                    {String(citedSourceCount).padStart(2, "0")}
+                  </span>
+                </div>
+                {citedSourceCount === 0 ? (
+                  <p className="mt-4 font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--text-quaternary)]">
+                    No cited sources in this brief.
+                  </p>
+                ) : (
+                  <ol className="mt-3">
+                    {parsedBrief.sources.map((source, idx) => (
+                      <li
+                        key={source.url}
+                        className="group grid grid-cols-[28px_1fr] gap-x-2 border-b border-[var(--rule-soft)] py-2.5"
+                      >
+                        <span className="pt-0.5 font-mono text-[10px] tabular-nums text-[var(--text-quaternary)]">
+                          {String(idx + 1).padStart(2, "0")}
+                        </span>
+                        <div className="min-w-0">
+                          <a
+                            href={source.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block truncate text-[13px] leading-snug text-[var(--text-primary)] hover:text-[var(--accent)]"
+                            title={source.title}
+                          >
+                            {source.title}
+                          </a>
+                          <p className="mt-0.5 truncate font-mono text-[10px] text-[var(--text-tertiary)]">
+                            {source.hostname}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            </aside>
+          </div>
 
           {/* Colophon */}
           <footer className="mt-16 border-t border-[var(--rule)] pt-5">

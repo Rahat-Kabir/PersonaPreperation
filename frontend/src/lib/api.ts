@@ -94,6 +94,74 @@ export async function exportBriefPDF(
 }
 
 
+export interface BriefSource {
+  url: string;
+  title: string;
+  hostname: string;
+}
+
+export interface ParsedBrief {
+  body: string;
+  sources: BriefSource[];
+}
+
+const URL_REGEX = /\bhttps?:\/\/[^\s)<>\]"']+/gi;
+
+function safeHostname(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+export function parseBriefSources(markdown: string): ParsedBrief {
+  if (!markdown) return { body: "", sources: [] };
+
+  const sourcesHeading = /^##\s+Sources\s*$/im;
+  const match = markdown.match(sourcesHeading);
+
+  let body = markdown;
+  let sourcesBlock = "";
+
+  if (match && match.index !== undefined) {
+    body = markdown.slice(0, match.index).trimEnd();
+    const rest = markdown.slice(match.index + match[0].length);
+    const nextHeading = rest.match(/^##\s+/m);
+    sourcesBlock = nextHeading?.index !== undefined ? rest.slice(0, nextHeading.index) : rest;
+  }
+
+  const seen = new Map<string, BriefSource>();
+  const addUrl = (rawUrl: string, label?: string) => {
+    const url = rawUrl.replace(/[.,);\]]+$/, "");
+    if (!/^https?:\/\//i.test(url)) return;
+    if (seen.has(url)) return;
+    const hostname = safeHostname(url);
+    const title = (label || "").trim() || hostname;
+    seen.set(url, { url, title, hostname });
+  };
+
+  const lines = sourcesBlock.split(/\r?\n/);
+  for (const raw of lines) {
+    const line = raw.trim().replace(/^[-*]\s*/, "");
+    if (!line) continue;
+
+    const mdLink = line.match(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/);
+    if (mdLink) {
+      addUrl(mdLink[2], mdLink[1]);
+      continue;
+    }
+
+    const urls = line.match(URL_REGEX);
+    if (urls) {
+      const labelCandidate = line.replace(URL_REGEX, "").replace(/[-—|:·]+\s*$/, "").trim();
+      urls.forEach((u, i) => addUrl(u, i === 0 ? labelCandidate : undefined));
+    }
+  }
+
+  return { body, sources: Array.from(seen.values()) };
+}
+
 export async function generateBrief(
   personName: string,
   meetingContext: string,

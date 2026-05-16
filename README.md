@@ -41,7 +41,7 @@ Each brief includes:
 - Unknowns and evidence gaps
 - Source URLs
 
-You can copy the brief, download it as a PDF, or come back to it later from the **History** tab.
+You can copy the brief, download it as a PDF, or come back to it later from the **History** tab. The result screen renders the brief alongside a sidebar of clickable sources extracted from the brief's `## Sources` section, so you can verify any claim with one click.
 
 ---
 

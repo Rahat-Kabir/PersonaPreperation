@@ -1,5 +1,14 @@
 # Technical Specification
 
+## Sources Sidebar
+
+- The brief markdown always contains a trailing `## Sources` section (enforced by the system prompt in `backend/config.py`). The frontend extracts it at render time via `parseBriefSources()` in `frontend/src/lib/api.ts`.
+- The parser splits on the `## Sources` heading, then for each line tries a `[label](url)` markdown link first and falls back to bare-URL extraction with the surrounding text as a label. Duplicate URLs are deduped by exact match (after trailing-punctuation trim). Hostnames are derived via `new URL()` with a `www.` strip.
+- Returned shape: `{ body: string, sources: { url, title, hostname }[] }`. `body` is the brief with the `## Sources` section removed so it does not render twice.
+- The result screen (`frontend/src/app/page.tsx`) renders `body` in an 8-col article and `sources` in a 4-col sticky sidebar. Container widened from `max-w-4xl` to `max-w-6xl`; on `<lg` widths the sidebar wraps below the article.
+- The masthead source count shows the parsed-citation count when present and falls back to the live `activityLog` result-event count for in-flight runs.
+- Backend, cache, and history are untouched. PDF export still posts the full markdown including the `## Sources` section so the printed dossier is self-contained.
+
 ## Brief History
 
 - Successful briefs are saved to a separate `brief_history` table inside the same SQLite file as the cache (`backend/cache.db`). See `backend/history.py`. Cache and history are deliberately separate concerns: cache is invisible optimization that expires; history is user-visible saved work that lives until the user deletes it.
